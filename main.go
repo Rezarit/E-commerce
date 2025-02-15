@@ -33,7 +33,7 @@ func main() {
 		protectedRouter.DELETE("/comment/{comment_id}", DeleteComment)   //删除评论
 		protectedRouter.PUT("/comment/{comment_id}", UpdateComment)      //更新评论
 		protectedRouter.PUT("/comment/praise", Praise)                   //点赞点踩
-		protectedRouter.POST("/operate/order", Order)                    //下单
+		protectedRouter.POST("/operate/order", MakeOrder)                //下单
 	}
 
 	err = Router.Run(":8080")
