@@ -159,23 +159,74 @@ func GetInfoById(client *gin.Context) {
 		if err == sql.ErrNoRows {
 			sendErrorResponse(client,
 				http.StatusNotFound,
-				10001,
+				10003,
 				"未找到该用户")
 		} else {
 			sendErrorResponse(client,
 				http.StatusInternalServerError,
-				10001,
+				10003,
 				fmt.Sprintf("数据库查询错误: %v", err))
 		}
 		return
 	}
 
 	//构造反应体
-	response := Response{
+	type UserResponse struct {
+		Status int    `json:"status"`
+		Info   string `json:"info"`
+		Data   struct {
+			User User `json:"user"`
+		} `json:"data"`
+	}
+
+	response := UserResponse{
 		Status: 10000,
 		Info:   "success",
 	}
 	response.Data.User = user
 
 	client.JSON(http.StatusOK, response)
+}
+
+func Info(client *gin.Context) {
+	var user User
+	if err := client.BindJSON(&user); err != nil {
+		sendErrorResponse(client,
+			http.StatusBadRequest,
+			10001,
+			"JSON解析失败")
+	}
+
+	cmd := "UPDATE users SET avatar = ?, nickname = ?, introduction = ?, phone = ?, qq = ?, gender = ?, email = ?, birthday = ? WHERE id = ?"
+	result, err := db.Exec(cmd, user.Avatar, user.Nickname, user.Introduction, user.Phone, user.QQ, user.Gender, user.Email, user.Birthday, user.ID)
+	if err != nil {
+		sendErrorResponse(
+			client,
+			http.StatusInternalServerError,
+			10003,
+			"更新数据失败")
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		sendErrorResponse(
+			client,
+			http.StatusInternalServerError,
+			10003,
+			"获取更新结果失败")
+		return
+	}
+
+	if rowsAffected == 0 {
+		sendErrorResponse(client,
+			http.StatusNotFound,
+			10003,
+			"未找到对应的用户记录，更新失败")
+		return
+	}
+
+	client.JSON(http.StatusOK, gin.H{
+		"status": 10000,
+		"info":   "信息更新成功"})
 }
