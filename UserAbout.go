@@ -42,11 +42,13 @@ func Register(client *gin.Context) {
 	cmd := "SELECT COUNT(*) FROM users WHERE username =?"
 	err := db.QueryRow(cmd, user.Username).Scan(&count)
 	if err != nil {
-		sendErrorResponse(client,
-			http.StatusBadRequest,
-			10003,
-			fmt.Sprintf("数据未能成功填入数据库: %v", err))
-		return
+		if err != sql.ErrNoRows {
+			sendErrorResponse(client,
+				http.StatusBadRequest,
+				10003,
+				fmt.Sprintf("数据未能成功填入数据库1: %v", err))
+			return
+		}
 	}
 	if count > 0 {
 		sendErrorResponse(client,
@@ -67,13 +69,13 @@ func Register(client *gin.Context) {
 	}
 
 	//执行插入指令
-	cmd = "INSERT INTO users(nickname,username,password) VALUES (?,?,?);"
-	_, err = db.Exec(cmd, user.Nickname, user.Username, string(hashedPassword))
+	cmd = "INSERT INTO users(id,nickname,username,password) VALUES (?,?,?,?);"
+	_, err = db.Exec(cmd, user.ID, user.Nickname, user.Username, string(hashedPassword))
 	if err != nil {
 		sendErrorResponse(client,
 			http.StatusInternalServerError,
 			10003,
-			fmt.Sprintf("数据未能成功填入数据库: %v", err))
+			fmt.Sprintf("数据未能成功填入数据库2: %v", err))
 		return
 	}
 
