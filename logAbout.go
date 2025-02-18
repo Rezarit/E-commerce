@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -15,7 +16,9 @@ func generateToken(userID string) (string, error) {
 	claims := token.Claims.(jwt.MapClaims)
 	claims["ID"] = userID
 	claims["exp"] = time.Now().Add(time.Minute * 1).Unix() // 设置有效期为 1 分钟
-	return token.SignedString("114514")
+	// 将密钥转换为字节切片
+	key := []byte("114514")
+	return token.SignedString(key)
 }
 
 func generateRToken(userID string) (string, error) {
@@ -23,22 +26,12 @@ func generateRToken(userID string) (string, error) {
 	claims := token.Claims.(jwt.MapClaims)
 	claims["ID"] = userID
 	claims["exp"] = time.Now().Add(time.Hour * 1).Unix() // 设置有效期为 1 小时
-	return token.SignedString("114514")
+	// 将密钥转换为字节切片
+	key := []byte("114514")
+	return token.SignedString(key)
 }
 
 func Login(client *gin.Context) {
-	//获取用户ID
-	userID := client.Param("user_id")
-
-	//验证是否为空
-	if userID == "" {
-		sendErrorResponse(client,
-			http.StatusBadRequest,
-			10001,
-			"用户 ID 不能为空")
-		return
-	}
-
 	//绑定数据
 	var user User
 	err := client.BindJSON(&user)
@@ -50,9 +43,17 @@ func Login(client *gin.Context) {
 		return
 	}
 
+	//验证是否为空
+	if user.ID == "" {
+		sendErrorResponse(client,
+			http.StatusBadRequest,
+			10001,
+			"用户 ID 不能为空")
+		return
+	}
+
 	//密码获取
-	password := client.Query("password")
-	if password == "" {
+	if user.Password == "" {
 		sendErrorResponse(client,
 			http.StatusBadRequest,
 			10001,
@@ -60,9 +61,10 @@ func Login(client *gin.Context) {
 		return
 	}
 
+	var password string
 	//数据库密码
 	cmd := "SELECT password From users WHERE id=?"
-	err = db.QueryRow(cmd, userID).Scan(&user.Password)
+	err = db.QueryRow(cmd, user.ID).Scan(&password)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			sendErrorResponse(client,
@@ -79,7 +81,7 @@ func Login(client *gin.Context) {
 	}
 
 	//核对密码
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	err = bcrypt.CompareHashAndPassword([]byte(password), []byte(user.Password))
 	if err != nil {
 		sendErrorResponse(client,
 			http.StatusBadRequest,
@@ -89,20 +91,20 @@ func Login(client *gin.Context) {
 	}
 
 	//生成token和refresh_token
-	Token, err := generateToken(userID)
+	Token, err := generateToken(user.ID)
 	if err != nil {
 		sendErrorResponse(client,
 			http.StatusInternalServerError,
 			10003,
-			"Token密钥转换失败")
+			fmt.Sprintf("Token密钥转换失败: %v", err))
 		return
 	}
-	RToken, err := generateRToken(userID)
+	RToken, err := generateRToken(user.ID)
 	if err != nil {
 		sendErrorResponse(client,
 			http.StatusInternalServerError,
 			10003,
-			"RToken密钥转换失败")
+			fmt.Sprintf("RToken密钥转换失败: %v", err))
 		return
 	}
 
@@ -118,7 +120,11 @@ func IsLogin() gin.HandlerFunc {
 		//读取头文件
 		authHeader := client.Request.Header.Get("Authorization")
 		if authHeader == "" {
-			client.JSON(10001, gin.H{"error": "Authorization为空"})
+			sendErrorResponse(
+				client,
+				http.StatusBadRequest,
+				10001,
+				"Authorization为空")
 			client.Abort()
 			return
 		}
@@ -126,7 +132,11 @@ func IsLogin() gin.HandlerFunc {
 		//提取Jwt
 		parts := strings.SplitN(authHeader, " ", 2)
 		if !(len(parts) == 2 && parts[0] == "Bearer") {
-			client.JSON(10001, gin.H{"error": "Jwt分解错误"})
+			sendErrorResponse(
+				client,
+				http.StatusBadRequest,
+				10003,
+				"Jwt分解错误")
 			client.Abort()
 			return
 		}
@@ -140,7 +150,11 @@ func IsLogin() gin.HandlerFunc {
 			return []byte("114514"), nil
 		})
 		if err != nil || !token.Valid {
-			client.JSON(10001, gin.H{"error": "无效的token"})
+			sendErrorResponse(
+				client,
+				http.StatusBadRequest,
+				10002,
+				"无效的token")
 			client.Abort()
 			return
 		}
@@ -154,13 +168,21 @@ func IsLogin() gin.HandlerFunc {
 func Refresh(client *gin.Context) {
 	authHeader := client.Request.Header.Get("Authorization")
 	if authHeader == "" {
-		client.JSON(10001, gin.H{"error": "Authorization为空"})
+		sendErrorResponse(
+			client,
+			http.StatusBadRequest,
+			10001,
+			"Authorization为空")
 		return
 	}
 
 	parts := strings.SplitN(authHeader, " ", 2)
 	if !(len(parts) == 2 && parts[0] == "Bearer") {
-		client.JSON(10001, gin.H{"erroe": "Jwt分解错误"})
+		sendErrorResponse(
+			client,
+			http.StatusBadRequest,
+			10001,
+			"Jwt分解错误")
 		return
 	}
 	tokenstring := parts[1]
@@ -172,18 +194,30 @@ func Refresh(client *gin.Context) {
 		return []byte("114514"), nil
 	})
 	if err != nil || !token.Valid {
-		client.JSON(10001, gin.H{"error": "无效的token"})
+		sendErrorResponse(
+			client,
+			http.StatusBadRequest,
+			10001,
+			"无效的token")
 		return
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		client.JSON(10001, gin.H{"error": "无效的token claims"})
+		sendErrorResponse(
+			client,
+			http.StatusBadRequest,
+			10001,
+			"无效的token claims")
 		return
 	}
 	if exp, ok := claims["exp"]; ok {
 		if float64(time.Now().Unix()) > exp.(float64) {
-			client.JSON(10001, gin.H{"error": "claims已过期"})
+			sendErrorResponse(
+				client,
+				http.StatusBadRequest,
+				10001,
+				"claims已过期")
 			client.Abort()
 			return
 		}
@@ -195,9 +229,16 @@ func Refresh(client *gin.Context) {
 	secret := []byte("114514")
 	signedToken, err := newToken.SignedString(secret)
 	if err != nil {
-		client.JSON(10001, gin.H{"error": "密钥转换失败"})
+		sendErrorResponse(
+			client,
+			http.StatusBadRequest,
+			10001,
+			"密钥转换失败")
 		return
 	}
 
-	client.JSON(10000, gin.H{"token": signedToken})
+	client.JSON(http.StatusOK, gin.H{
+		"status": 10000,
+		"info":   "刷新成功",
+		"token":  signedToken})
 }

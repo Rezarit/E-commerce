@@ -140,7 +140,7 @@ func DeleteComment(client *gin.Context) {
 				client,
 				http.StatusInternalServerError,
 				10003,
-				"数据库查询失败")
+				fmt.Sprintf("数据库查询失败: %v", err))
 			return
 		}
 	}
@@ -185,7 +185,7 @@ func UpdateComment(client *gin.Context) {
 				client,
 				http.StatusInternalServerError,
 				10003,
-				"数据库查询失败")
+				fmt.Sprintf("数据库查询失败: %v", err))
 			return
 		}
 	}

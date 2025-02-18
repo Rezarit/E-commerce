@@ -1,6 +1,9 @@
 package main
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+	_ "github.com/go-sql-driver/mysql"
+)
 
 func main() {
 	err := initdatabase()
@@ -12,7 +15,7 @@ func main() {
 
 	//登录前
 	Router.POST("/user/register", Register) //注册
-	Router.GET("/user/token", Login)        //登录（获取token）
+	Router.POST("/user/token", Login)       //登录（获取token）
 
 	protectedRouter := Router.Group("/")
 	protectedRouter.Use(IsLogin())
@@ -23,8 +26,8 @@ func main() {
 		protectedRouter.GET("/user/info/{user_id}", GetInfoById)         //获取用户信息
 		protectedRouter.PUT("/user/info", Info)                          //修改用户信息
 		protectedRouter.GET("/product/list", ShowList)                   //获取商品列表
-		protectedRouter.POST("/book/search", SearchProduct)              //搜索商品
-		protectedRouter.PUT("/product/addCart", AddCart)                 //加⼊购物⻋
+		protectedRouter.POST("/book/search/{product_id}", SearchProduct) //搜索商品
+		protectedRouter.PUT("/product/addCart/{product_id}", AddCart)    //加⼊购物⻋
 		protectedRouter.GET("/product/cart", ShowCart)                   //获取购物⻋商品列表
 		protectedRouter.GET("/product/info/{product_id}", ProductDetail) //获取商品详情
 		protectedRouter.GET("/product/{type}", GetType)                  //获取相应标签的商品列表

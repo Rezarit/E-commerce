@@ -9,11 +9,18 @@ import (
 )
 
 func AddCart(client *gin.Context) {
-	//获取用户ID
-	userID := client.Param("user_id")
+	//绑定数据
+	var user User
+	if err := client.BindJSON(&user); err != nil {
+		sendErrorResponse(client,
+			http.StatusBadRequest,
+			10001,
+			"JSON解析失败")
+		return
+	}
 
 	//检查用户ID
-	if userID == "" {
+	if user.ID == "" {
 		sendErrorResponse(
 			client,
 			http.StatusBadRequest,
@@ -37,7 +44,7 @@ func AddCart(client *gin.Context) {
 
 	//执行插入语句
 	cmd := "INSERT INTO shopping_carts (user_id, product_id, quantity) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE quantity = quantity + 1"
-	_, err := db.Exec(cmd, userID, productID)
+	_, err := db.Exec(cmd, user.ID, productID)
 	if err != nil {
 		sendErrorResponse(client,
 			http.StatusInternalServerError,
@@ -52,11 +59,18 @@ func AddCart(client *gin.Context) {
 }
 
 func ShowCart(client *gin.Context) {
-	//获取用户ID
-	userID := client.Param("user_id")
+	//绑定数据
+	var user User
+	if err := client.BindJSON(&user); err != nil {
+		sendErrorResponse(client,
+			http.StatusBadRequest,
+			10001,
+			"JSON解析失败")
+		return
+	}
 
 	//检查用户ID
-	if userID == "" {
+	if user.ID == "" {
 		sendErrorResponse(
 			client,
 			http.StatusBadRequest,
@@ -67,7 +81,7 @@ func ShowCart(client *gin.Context) {
 
 	//执行查询操作
 	cmd := "SELECT product_id FROM shopping_carts WHERE user_id = ?"
-	rows, err := db.Query(cmd, userID)
+	rows, err := db.Query(cmd, user.ID)
 	if err != nil {
 		sendErrorResponse(client,
 			http.StatusInternalServerError,
