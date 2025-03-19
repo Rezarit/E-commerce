@@ -1,22 +1,28 @@
-package main
+package api
 
 import (
 	"fmt"
+	"github.com/Rezarit/E-commerce/dao"
+	"github.com/Rezarit/E-commerce/domain"
+	"github.com/Rezarit/E-commerce/service"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
 
 func MakeOrder(client *gin.Context) {
-	var req Order
+	var req domain.Order
 	// 绑定请求体中的 JSON 数据
 	if err := client.BindJSON(&req); err != nil {
-		sendErrorResponse(client, http.StatusBadRequest, 10001, "请求参数格式错误")
+		service.SendErrorResponse(client,
+			http.StatusBadRequest,
+			10001,
+			"请求参数格式错误")
 		return
 	}
 
 	// 输入验证
 	if req.Address == "" || req.Total <= 0 || req.UserID == "" {
-		sendErrorResponse(
+		service.SendErrorResponse(
 			client,
 			http.StatusBadRequest,
 			10001,
@@ -24,21 +30,12 @@ func MakeOrder(client *gin.Context) {
 		return
 	}
 
-	//执行插入语句
-	cmd := "INSERT INTO orders (address, total, user_id) VALUES (?, ?, ?)"
-	result, err := db.Exec(cmd, req.Address, req.Total, req.UserID)
-	if err != nil {
-		sendErrorResponse(client,
-			http.StatusInternalServerError,
-			10003,
-			fmt.Sprintf("下单失败: %v", err))
-		return
-	}
+	result, err := dao.Order(req)
 
 	// 获取插入的订单 ID
 	lastInsertID, err := result.LastInsertId()
 	if err != nil {
-		sendErrorResponse(
+		service.SendErrorResponse(
 			client,
 			http.StatusInternalServerError,
 			10003,

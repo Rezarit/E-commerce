@@ -1,12 +1,12 @@
-package main
+package domain
 
 type User struct {
-	ID           string `json:"id"`
+	UserID       int    `json:"user_id"`
 	Avatar       string `json:"avatar"`
 	Nickname     string `json:"nickname"`
 	Introduction string `json:"introduction"`
-	Phone        int64  `json:"phone"`
-	QQ           int64  `json:"qq"`
+	Phone        int    `json:"phone"`
+	QQ           int    `json:"qq"`
 	Gender       string `json:"gender"`
 	Email        string `json:"email"`
 	Birthday     string `json:"birthday"`
@@ -15,7 +15,7 @@ type User struct {
 }
 
 type Product struct {
-	ID          string `json:"product_id"`
+	ProductID   int    `json:"product_id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Type        string `json:"type"`
@@ -23,25 +23,29 @@ type Product struct {
 	Price       string `json:"price"`
 	IsaddedCart bool   `json:"is_added_cart"`
 	Cover       string `json:"cover"`
-	PublishTime int64  `json:"publish_time"`
+	PublishTime int    `json:"publish_time"`
 	Link        string `json:"link"`
 }
 
 type Order struct {
-	OrderID string  `json:"order_id"`
+	OrderID int     `json:"order_id"`
 	Address string  `json:"address"`
 	Total   float32 `json:"total"`
 	UserID  string  `json:"user_id"`
 }
 
 type Comment struct {
-	PostID      string `json:"post_id"`
-	PublishTime int64  `json:"publish_time"`
+	CommentID   int    `json:"post_id"`
+	PublishTime int    `json:"publish_time"`
 	Content     string `json:"content"`
-	UserID      string `json:"user_id"`
+	UserID      int    `json:"user_id"`
 	Avatar      string `json:"avatar"`
 	Nickname    string `json:"nickname"`
 	PraiseCount string `json:"praise_count"`
 	IsPraised   int    `json:"is_praised"`
 	ProductID   string `json:"product_id"`
 }
+
+var ErrorStatus int
+
+var ErrorMsg string

@@ -1,19 +1,19 @@
-package main
+package dao
 
 import "database/sql"
 
-var db *sql.DB
+var DB *sql.DB
 
-func initdatabase() error {
+func Initdatabase() error {
 	dns := "root:fzfz1314@tcp(127.0.0.1:3306)/e_commerce?charset=utf8mb4&parseTime=True&loc=Local"
 
 	var err error
-	db, err = sql.Open("mysql", dns)
+	DB, err = sql.Open("mysql", dns)
 	if err != nil {
 		return err
 	}
 
-	err = db.Ping()
+	err = DB.Ping()
 	if err != nil {
 		return err
 	}

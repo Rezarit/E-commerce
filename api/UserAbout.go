@@ -1,18 +1,21 @@
-package main
+package api
 
 import (
 	"database/sql"
 	"fmt"
+	"github.com/Rezarit/E-commerce/dao"
+	"github.com/Rezarit/E-commerce/domain"
+	"github.com/Rezarit/E-commerce/service"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 	"net/http"
+	"strconv"
 )
 
 func Register(client *gin.Context) {
 	//绑定数据
-	var user User
+	var user domain.User
 	if err := client.BindJSON(&user); err != nil {
-		sendErrorResponse(client,
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10002,
 			"JSON解析失败")
@@ -20,38 +23,37 @@ func Register(client *gin.Context) {
 	}
 
 	//检查用户名长度
-	if 1 > len(user.Username) {
-		sendErrorResponse(client,
+	domain.ErrorStatus = service.CheckUsernameLen(user.Username)
+	if domain.ErrorStatus == 10001 {
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10001,
 			"用户名过短")
-		return
 	}
 
-	//检验密码长度
-	if 8 > len(user.Password) {
-		sendErrorResponse(client,
+	//检查密码长度
+	domain.ErrorStatus = service.CheckPasswordLen(user.Password)
+	if domain.ErrorStatus == 10001 {
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10001,
 			"密码过短")
-		return
 	}
 
 	//检验是否用户名是否存在
-	var count int
-	cmd := "SELECT COUNT(*) FROM users WHERE username =?"
-	err := db.QueryRow(cmd, user.Username).Scan(&count)
+	var count string
+	is, err := dao.CheckUsernameExists(count)
 	if err != nil {
 		if err != sql.ErrNoRows {
-			sendErrorResponse(client,
+			service.SendErrorResponse(client,
 				http.StatusBadRequest,
 				10003,
 				fmt.Sprintf("数据未能成功填入数据库1: %v", err))
 			return
 		}
 	}
-	if count > 0 {
-		sendErrorResponse(client,
+	if is == true {
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10001,
 			"用户名已存在")
@@ -59,9 +61,9 @@ func Register(client *gin.Context) {
 	}
 
 	//密码加密
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	hashedPassword, err := service.HashedPassword(user.Password)
 	if err != nil {
-		sendErrorResponse(client,
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10003,
 			fmt.Sprintf("密码加密失败: %v", err))
@@ -69,10 +71,9 @@ func Register(client *gin.Context) {
 	}
 
 	//执行插入指令
-	cmd = "INSERT INTO users(id,nickname,username,password) VALUES (?,?,?,?);"
-	_, err = db.Exec(cmd, user.ID, user.Nickname, user.Username, string(hashedPassword))
+	err = dao.InsertPassword(user.Nickname, user.Username, string(hashedPassword))
 	if err != nil {
-		sendErrorResponse(client,
+		service.SendErrorResponse(client,
 			http.StatusInternalServerError,
 			10003,
 			fmt.Sprintf("数据未能成功填入数据库2: %v", err))
@@ -87,27 +88,29 @@ func Register(client *gin.Context) {
 
 func Password(client *gin.Context) {
 	//绑定数据
-	var user User
+	var user domain.User
 	if err := client.BindJSON(&user); err != nil {
-		sendErrorResponse(client,
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10001,
 			"JSON解析失败")
 		return
 	}
 
-	//检验长度
-	if 8 > len(user.Password) {
-		sendErrorResponse(client,
+	//检查密码长度
+	domain.ErrorStatus = service.CheckPasswordLen(user.Password)
+	if domain.ErrorStatus == 10001 {
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10001,
 			"密码过短")
+		return
 	}
 
 	//加密密码
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	hashedPassword, err := service.HashedPassword(user.Password)
 	if err != nil {
-		sendErrorResponse(client,
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10003,
 			fmt.Sprintf("密码加密失败: %v", err))
@@ -115,10 +118,9 @@ func Password(client *gin.Context) {
 	}
 
 	//执行更新指令
-	cmd := "UPDATE users SET password=? WHERE Id=?;"
-	_, err = db.Exec(cmd, hashedPassword, user.ID)
+	err = dao.UpdatePassword(user.UserID, string(hashedPassword))
 	if err != nil {
-		sendErrorResponse(client,
+		service.SendErrorResponse(client,
 			http.StatusInternalServerError,
 			10001,
 			fmt.Sprintf("密码更新失败: %v", err))
@@ -133,38 +135,27 @@ func Password(client *gin.Context) {
 
 func GetInfoById(client *gin.Context) {
 	//获取用户ID
-	userID := client.Param("user_id")
-
-	//验证是否为空
-	if userID == "" {
-		sendErrorResponse(client,
+	userIDStr := client.Param("user_id")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10001,
-			"用户 ID 不能为空")
+			"无效的 user_id")
 		return
 	}
 
 	//执行查询指令
-	var user User
-	cmd := "SELECT id, avatar, nickname, introduction, phone, qq, gender, email, birthday FROM users WHERE id=?;"
-	err := db.QueryRow(cmd, userID).Scan(
-		&user.ID,
-		&user.Avatar,
-		&user.Nickname,
-		&user.Introduction,
-		&user.Phone,
-		&user.QQ,
-		&user.Gender,
-		&user.Email,
-		&user.Birthday)
+	var user domain.User
+	user, err = dao.SearchUserMsg(userID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			sendErrorResponse(client,
+			service.SendErrorResponse(client,
 				http.StatusNotFound,
 				10003,
 				"未找到该用户")
 		} else {
-			sendErrorResponse(client,
+			service.SendErrorResponse(client,
 				http.StatusInternalServerError,
 				10003,
 				fmt.Sprintf("数据库查询错误: %v", err))
@@ -177,7 +168,7 @@ func GetInfoById(client *gin.Context) {
 		Status int    `json:"status"`
 		Info   string `json:"info"`
 		Data   struct {
-			User User `json:"user"`
+			User domain.User `json:"user"`
 		} `json:"data"`
 	}
 
@@ -191,40 +182,28 @@ func GetInfoById(client *gin.Context) {
 }
 
 func Info(client *gin.Context) {
-	var user User
+	var user domain.User
 	if err := client.BindJSON(&user); err != nil {
-		sendErrorResponse(client,
+		service.SendErrorResponse(client,
 			http.StatusBadRequest,
 			10001,
 			"JSON解析失败")
 	}
 
-	cmd := "UPDATE users SET avatar = ?, nickname = ?, introduction = ?, phone = ?, qq = ?, gender = ?, email = ?, birthday = ? WHERE id = ?"
-	result, err := db.Exec(cmd, user.Avatar, user.Nickname, user.Introduction, user.Phone, user.QQ, user.Gender, user.Email, user.Birthday, user.ID)
+	err := dao.UpdateUserMeg(user.UserID,
+		user.Phone,
+		user.QQ,
+		user.Avatar,
+		user.Nickname,
+		user.Introduction,
+		user.Gender,
+		user.Email,
+		user.Birthday)
 	if err != nil {
-		sendErrorResponse(
-			client,
+		service.SendErrorResponse(client,
 			http.StatusInternalServerError,
 			10003,
-			"更新数据失败")
-		return
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		sendErrorResponse(
-			client,
-			http.StatusInternalServerError,
-			10003,
-			"获取更新结果失败")
-		return
-	}
-
-	if rowsAffected == 0 {
-		sendErrorResponse(client,
-			http.StatusNotFound,
-			10003,
-			"未找到对应的用户记录，更新失败")
+			fmt.Sprintf("更新数据失败: %v", err))
 		return
 	}
 
