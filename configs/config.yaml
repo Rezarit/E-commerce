@@ -1,0 +1,4 @@
+jwt:
+  secret: "b2ec7fc36e4b1eec15c40f9ede0df791133554141cb4a09e75ca255f2ed2e92c"
+  access_token_expire_hour: 2
+  refresh_token_expire_hour: 24
