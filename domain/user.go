@@ -1,7 +1,13 @@
 package domain
 
+const (
+	RoleUser     = 0 // 普通用户
+	RoleMerchant = 1 // 商户
+	RoleAdmin    = 2 // 管理员
+)
+
 type User struct {
-	UserID       int64  `json:"user_id;primaryKey;autoIncrement"`
+	UserID       int64  `json:"user_id" gorm:"primaryKey;autoIncrement"`
 	Avatar       string `json:"avatar"` //头像
 	Nickname     string `json:"nickname"`
 	Introduction string `json:"introduction"`
@@ -12,6 +18,7 @@ type User struct {
 	Birthday     string `json:"birthday"`
 	Username     string `json:"username"`
 	Password     string `json:"password"`
+	Role         int    `json:"role" gorm:"default:0"`
 }
 
 type UserRegisterRequest struct {
@@ -20,7 +27,7 @@ type UserRegisterRequest struct {
 }
 
 type UserRegisterResponse struct {
-	Username string `json:"username"`
+	UserID int64 `json:"user_id"`
 }
 
 type UserLoginRequest struct {
@@ -29,6 +36,7 @@ type UserLoginRequest struct {
 }
 
 type UserLoginResponse struct {
+	UserID       int64  `json:"user_id"`
 	Username     string `json:"username"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -55,4 +63,5 @@ type GetUserInfoResponse struct {
 	Email        string `json:"email"`
 	Birthday     string `json:"birthday"`
 	Username     string `json:"username"`
+	Role         int    `json:"role"`
 }

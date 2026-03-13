@@ -1,41 +1,94 @@
 package api
 
-//func MakeOrder(client *gin.Context) {
-//	var req domain.Order
-//	// 绑定请求体中的 JSON 数据
-//	if err := client.BindJSON(&req); err != nil {
-//		response.SendErrorResponse(client,
-//			http.StatusBadRequest,
-//			10001,
-//			"请求参数格式错误")
-//		return
-//	}
-//
-//	// 输入验证
-//	if req.Address == "" || req.Total <= 0 || req.UserID == "" {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			"地址、总价或用户 ID 不能为空")
-//		return
-//	}
-//
-//	result, err := dao.Order(req)
-//
-//	// 获取插入的订单 ID
-//	lastInsertID, err := result.LastInsertId()
-//	if err != nil {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusInternalServerError,
-//			10003,
-//			fmt.Sprintf("获取订单 ID 失败: %v", err))
-//		return
-//	}
-//
-//	client.JSON(http.StatusOK, gin.H{
-//		"status":   10000,
-//		"info":     "下单成功",
-//		"order_id": fmt.Sprintf("%d", lastInsertID)})
-//}
+import (
+	"github.com/Rezarit/E-commerce/api/common"
+	"github.com/Rezarit/E-commerce/domain"
+	"github.com/Rezarit/E-commerce/pkg/response"
+	"github.com/Rezarit/E-commerce/service"
+	"github.com/gin-gonic/gin"
+	"log"
+	"strconv"
+)
+
+// MakeOrder 下单
+func MakeOrder(client *gin.Context) {
+	// 获取用户ID
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
+
+	// 绑定请求参数
+	var req domain.OrderCreateRequest
+	isPass := common.BindRequest(client, &req)
+	if !isPass {
+		return
+	}
+
+	// 执行下单操作
+	orderID, err := service.MakeOrder(userID, req.Address)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	// 返回成功响应
+	response.Success(client, "下单成功", gin.H{
+		"order_id": orderID,
+	})
+}
+
+// GetOrderList 获取订单列表
+func GetOrderList(client *gin.Context) {
+	// 获取用户ID
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
+
+	// 执行获取订单列表操作
+	orders, err := service.GetOrderList(userID)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	// 返回成功响应
+	response.Success(client, "获取订单列表成功", orders)
+}
+
+// ParseOrderID 获取订单ID
+func ParseOrderID(client *gin.Context) int64 {
+	orderIDStr := client.Param("order_id")
+	orderID, err := strconv.ParseInt(orderIDStr, 10, 64)
+	if err != nil {
+		log.Printf("[API] 解析订单ID失败 | 错误：%v", err)
+		return 0
+	}
+	return orderID
+}
+
+// GetOrderDetail 获取订单详情
+func GetOrderDetail(client *gin.Context) {
+	// 获取用户ID
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
+
+	// 获取订单ID
+	orderID := ParseOrderID(client)
+	if orderID == 0 {
+		return
+	}
+
+	// 执行获取订单详情操作
+	order, orderItems, err := service.GetOrderDetail(orderID, userID)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	// 返回成功响应
+	response.Success(client, "获取订单详情成功", gin.H{
+		"order":       order,
+		"order_items": orderItems,
+	})
+}

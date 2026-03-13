@@ -5,20 +5,21 @@ import (
 	"github.com/Rezarit/E-commerce/domain"
 	"github.com/Rezarit/E-commerce/pkg/config"
 	"github.com/dgrijalva/jwt-go"
+	"log"
 	"strings"
 	"time"
 )
 
 func GetTokenFromAuthHeader(authHeader string) (string, error) {
 	parts := strings.SplitN(authHeader, " ", 2)
-	if !(len(parts) == 2 && parts[0] == "Bearer") {
+	if !(len(parts) == 2 && strings.EqualFold(parts[0], "Bearer")) {
+		log.Printf("[登录态验证失败] Authorization格式错误 | 错误值：%s", authHeader)
 		return "", errors.New("无效的请求头")
 	}
 	return parts[1], nil
 }
 
 // ParseToken 解析token
-//func ParseToken(tokenStr string) ，(jwt.Token，error) {
 func ParseToken(tokenStr string, claims jwt.Claims) error {
 	token, err := jwt.ParseWithClaims(
 		tokenStr,

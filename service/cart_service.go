@@ -1,62 +1,102 @@
 package service
 
-//func CartSearch(rows *sql.Rows) ([]int, error) {
-//	var products []domain.Product
-//	var productIDs []int
-//
-//	for rows.Next() {
-//		var product domain.Product
-//		err := rows.Scan(&product.ProductID)
-//		if err != nil {
-//			return productIDs, err
-//		}
-//		products = append(products, product)
-//		productIDs = append(productIDs, product.ProductID)
-//	}
-//
-//	err := rows.Err()
-//	if err != nil {
-//		return productIDs, err
-//	}
-//	return productIDs, nil
-//}
-//
-//func SearchCart(productIDs []int, args []any) ([]domain.Product, error) {
-//	placeholder := make([]string, len(productIDs))
-//	for i := range placeholder {
-//		placeholder[i] = "?"
-//	}
-//	inClause := fmt.Sprintf("(%s)", strings.Join(placeholder, ","))
-//
-//	rows, err := dao.SearchCart(inClause, args)
-//
-//	var products []domain.Product
-//
-//	//使用映射关联商品 ID 和商品信息
-//	productMap := make(map[int]*domain.Product)
-//	for i := range products {
-//		productMap[products[i].ProductID] = &products[i]
-//	}
-//
-//	for rows.Next() {
-//		var product domain.Product
-//		err = rows.Scan(
-//			&product.ProductID,
-//			&product.Name,
-//			&product.Description,
-//			&product.Type,
-//			&product.CommentNum,
-//			&product.Price,
-//			&product.Cover,
-//			&product.PublishTime,
-//			&product.Link)
-//		if err != nil {
-//			return products, err
-//		}
-//		product.IsaddedCart = true
-//		if p, ok := productMap[product.ProductID]; ok {
-//			*p = product
-//		}
-//	}
-//	return products, nil
-//}
+import (
+	"github.com/Rezarit/E-commerce/dao"
+	"github.com/Rezarit/E-commerce/domain"
+	"log"
+)
+
+// AddToCart 加入购物车
+func AddToCart(userID, productID int64, quantity int) error {
+	log.Printf("[Service] 加入购物车 | 用户ID：%d | 商品ID：%d | 数量：%d", userID, productID, quantity)
+
+	if quantity <= 0 {
+		return &domain.BusinessError{
+			Code: domain.ErrCodeParamInvalid,
+			Msg:  "数量必须大于0",
+		}
+	}
+
+	// 验证商品是否存在
+	if err := CheckProductIDExists(productID); err != nil {
+		return err
+	}
+
+	resp := domain.Cart{
+		UserID:    userID,
+		ProductID: productID,
+		Quantity:  quantity,
+	}
+
+	err := dao.AddToCart(resp)
+	if err != nil {
+		log.Printf("[Service] 加入购物车失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, productID, err)
+		return &domain.BusinessError{
+			Code: domain.ErrCodeDBError,
+			Msg:  "加入购物车失败",
+		}
+	}
+
+	log.Printf("[Service] 加入购物车成功 | 用户ID：%d | 商品ID：%d", userID, productID)
+	return nil
+}
+
+// ShowCart 获取购物车商品列表
+func ShowCart(userID int64) ([]domain.Cart, error) {
+	log.Printf("[Service] 获取购物车商品列表 | 用户ID：%d", userID)
+
+	carts, err := dao.ShowCart(userID)
+	if err != nil {
+		log.Printf("[Service] 获取购物车商品列表失败 | 用户ID：%d | 错误：%v", userID, err)
+		return nil, &domain.BusinessError{
+			Code: domain.ErrCodeDBError,
+			Msg:  "获取购物车商品列表失败",
+		}
+	}
+
+	log.Printf("[Service] 获取购物车商品列表成功 | 用户ID：%d | 商品数量：%d", userID, len(carts))
+	return carts, nil
+}
+
+// RemoveFromCart 从购物车移除商品
+func RemoveFromCart(userID, productID int64) error {
+	log.Printf("[Service] 从购物车移除商品 | 用户ID：%d | 商品ID：%d", userID, productID)
+
+	// 检查商品是否在购物车中
+	if err := CheckCartItemExists(userID, productID); err != nil {
+		return err
+	}
+
+	err := dao.RemoveFromCart(userID, productID)
+	if err != nil {
+		log.Printf("[Service] 从购物车移除商品失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, productID, err)
+		return &domain.BusinessError{
+			Code: domain.ErrCodeDBError,
+			Msg:  "从购物车移除商品失败",
+		}
+	}
+
+	log.Printf("[Service] 从购物车移除商品成功 | 用户ID：%d | 商品ID：%d", userID, productID)
+	return nil
+}
+
+// CheckCartItemExists 检查购物车商品是否存在
+func CheckCartItemExists(userID, productID int64) error {
+	// 检查商品是否在购物车中
+	exists, err := dao.CheckCartItemExists(userID, productID)
+	if err != nil {
+		log.Printf("[Service] 检查购物车商品失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, productID, err)
+		return &domain.BusinessError{
+			Code: domain.ErrCodeDBError,
+			Msg:  "检查购物车商品失败",
+		}
+	}
+	if !exists {
+		log.Printf("[Service] 商品不在购物车中 | 用户ID：%d | 商品ID：%d", userID, productID)
+		return &domain.BusinessError{
+			Code: domain.ErrCodeParamInvalid,
+			Msg:  "商品不在购物车中",
+		}
+	}
+	return nil
+}

@@ -1,234 +1,131 @@
 package api
 
-//func ShowList(client *gin.Context) {
-//	//绑定数据
-//	var user domain.User
-//	if err := client.BindJSON(&user); err != nil {
-//		response.SendErrorResponse(client,
-//			http.StatusBadRequest,
-//			10001,
-//			"JSON解析失败")
-//		return
-//	}
-//
-//	//检查用户ID
-//	if user.UserID == 0 {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			"用户 ID 不能为空")
-//		return
-//	}
-//
-//	//创建产品列表
-//	var products []domain.Product
-//
-//	products, err := service.ListSearch(user)
-//	if err != nil {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusInternalServerError,
-//			10003,
-//			fmt.Sprintf("获取列表失败: %v", err))
-//		return
-//	}
-//
-//	client.JSON(http.StatusOK, gin.H{
-//		"status":   10000,
-//		"info":     "success",
-//		"products": products,
-//	})
-//}
-//
-//func SearchProduct(client *gin.Context) {
-//	//绑定数据
-//	var user domain.User
-//	if err := client.BindJSON(&user); err != nil {
-//		response.SendErrorResponse(client,
-//			http.StatusBadRequest,
-//			10001,
-//			"JSON解析失败")
-//		return
-//	}
-//
-//	//检查用户ID
-//	if user.UserID == 0 {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			"用户 ID 不能为空")
-//		return
-//	}
-//
-//	//获取商品ID
-//	productIDStr := client.Param("product_id")
-//	productID, err := strconv.Atoi(productIDStr)
-//	if err != nil {
-//		response.SendErrorResponse(client,
-//			http.StatusBadRequest,
-//			10001,
-//			"无效的 product_id")
-//		return
-//	}
-//
-//	//验证是否为空
-//	if productIDStr == "" {
-//		response.SendErrorResponse(client,
-//			http.StatusBadRequest,
-//			10001,
-//			"商品ID不能为空")
-//	}
-//
-//	var product domain.Product
-//
-//	product, err = dao.SearchProductbyID(productID)
-//
-//	product.IsaddedCart, err = dao.IsAdded(user.UserID, productID)
-//	if err != nil {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10003,
-//			fmt.Sprintf("数据库查询错误: %v", err))
-//		return
-//	}
-//
-//	client.JSON(http.StatusOK, gin.H{
-//		"status":   10000,
-//		"info":     "success",
-//		"products": product,
-//	})
-//}
-//
-//func ProductDetail(client *gin.Context) {
-//	//绑定数据
-//	var user domain.User
-//	if err := client.BindJSON(&user); err != nil {
-//		response.SendErrorResponse(client,
-//			http.StatusBadRequest,
-//			10001,
-//			"JSON解析失败")
-//		return
-//	}
-//
-//	//检查用户ID
-//	if user.UserID == 0 {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			"用户 ID 不能为空")
-//		return
-//	}
-//
-//	//获取商品ID
-//	productIDStr := client.Param("product_id")
-//	productID, err := strconv.Atoi(productIDStr)
-//	if err != nil {
-//		response.SendErrorResponse(client,
-//			http.StatusBadRequest,
-//			10001,
-//			"无效的 product_id")
-//		return
-//	}
-//
-//	//检查ID
-//	if productIDStr == "" {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			"商品 ID 不能为空")
-//		return
-//	}
-//
-//	var product domain.Product
-//
-//	//实现查询功能
-//	product, err = dao.SearchProductbyID(productID)
-//	if err != nil {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10003,
-//			fmt.Sprintf("数据库查询错误: %v", err))
-//		return
-//	}
-//
-//	product.IsaddedCart, err = dao.IsAdded(user.UserID, productID)
-//	if err != nil {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10003,
-//			fmt.Sprintf("数据库查询错误: %v", err))
-//		return
-//	}
-//
-//	client.JSON(http.StatusOK, gin.H{
-//		"status":   10000,
-//		"info":     "success",
-//		"products": product})
-//}
-//
-//func GetType(client *gin.Context) {
-//	//绑定数据
-//	var user domain.User
-//	if err := client.BindJSON(&user); err != nil {
-//		response.SendErrorResponse(client,
-//			http.StatusBadRequest,
-//			10001,
-//			"JSON解析失败")
-//		return
-//	}
-//
-//	//检查用户ID
-//	if user.UserID == 0 {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			"用户 ID 不能为空")
-//		return
-//	}
-//
-//	//获取type
-//	productType := client.Param("type")
-//
-//	//检验type
-//	if productType == "" {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			"类型不能为空")
-//		return
-//	}
-//
-//	rows, err := dao.SearchProductbyType(productType)
-//	if err != nil {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			fmt.Sprintf("数据库查询错误: %v", err))
-//		return
-//	}
-//
-//	products, err := service.TypeSearch(user, rows)
-//	if err != nil {
-//		response.SendErrorResponse(
-//			client,
-//			http.StatusBadRequest,
-//			10001,
-//			fmt.Sprintf("查询失败: %v", err))
-//		return
-//	}
-//
-//	client.JSON(http.StatusOK, gin.H{
-//		"status": 10000,
-//		"info":   "success",
-//		"data":   products})
-//}
+import (
+	"github.com/Rezarit/E-commerce/api/common"
+	"github.com/Rezarit/E-commerce/domain"
+	"github.com/Rezarit/E-commerce/pkg/response"
+	"github.com/Rezarit/E-commerce/service"
+	"github.com/gin-gonic/gin"
+	"strconv"
+)
+
+// CreatProduct 添加商品
+func CreatProduct(client *gin.Context) {
+	var product domain.ProductCreatRequest
+	isPass := common.BindRequest(client, &product)
+	if !isPass {
+		return
+	}
+
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
+
+	productID, err := service.CreatProduct(product, userID)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	response.Success(client, "商品添加成功", domain.ProductCreateResponse{ProductID: productID})
+}
+
+// UpdateProduct 更新商品
+func UpdateProduct(client *gin.Context) {
+	var product domain.ProductUpdateRequest
+	isPass := common.BindRequest(client, &product)
+	if !isPass {
+		return
+	}
+
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
+
+	err := service.UpdateProduct(product, userID)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	response.Success(client, "商品更新成功", product)
+}
+
+// DeleteProduct 删除商品
+func DeleteProduct(client *gin.Context) {
+	var product domain.ProductDeleteRequest
+	isPass := common.BindRequest(client, &product)
+	if !isPass {
+		return
+	}
+
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
+
+	err := service.DeleteProduct(product.ProductID, userID)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	response.Success(client, "商品删除成功", nil)
+}
+
+// ShowProductList 获取商品列表
+func ShowProductList(client *gin.Context) {
+	products, err := service.GetProductList()
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+	response.Success(client, "获取商品列表成功", products)
+}
+
+// SearchProduct 搜索商品
+func SearchProduct(client *gin.Context) {
+	var searchRequest domain.ProductSearchRequest
+
+	isPass := common.BindRequest(client, &searchRequest)
+	if !isPass {
+		return
+	}
+
+	products, err := service.SearchProduct(searchRequest.Keyword)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	response.Success(client, "搜索商品成功", products)
+}
+
+// ParseProductID 解析商品ID
+func ParseProductID(client *gin.Context) int64 {
+	productID := client.Param("product_id")
+	if productID == "" {
+		response.Fail(client, domain.ErrCodeParamInvalid, "商品ID不能为空")
+		return 0
+	}
+
+	// 转换商品ID为int64
+	pid, err := strconv.ParseInt(productID, 10, 64)
+	if err != nil {
+		response.Fail(client, domain.ErrCodeParamInvalid, "商品ID格式错误")
+		return 0
+	}
+	return pid
+}
+
+// ProductDetail 获取商品详情
+func ProductDetail(client *gin.Context) {
+	productID := ParseProductID(client)
+	if productID == 0 {
+		return
+	}
+
+	product, err := service.GetProductDetail(productID)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	response.Success(client, "获取商品详情成功", product)
+}

@@ -1,11 +1,40 @@
 package dao
 
-//func Order(req domain.Order) (sql.Result, error) {
-//	//执行插入语句
-//	cmd := "INSERT INTO orders (address, total, user_id) VALUES (?, ?, ?)"
-//	result, err := DB.Exec(cmd, req.Address, req.Total, req.UserID)
-//	if err != nil {
-//		return result, err
-//	}
-//	return result, nil
-//}
+import "github.com/Rezarit/E-commerce/domain"
+
+// CreateOrder 创建订单
+func CreateOrder(order *domain.Order) error {
+	return InsertRecord(order)
+}
+
+// CreateOrderItem 创建订单商品
+func CreateOrderItem(orderItem *domain.OrderItem) error {
+	return InsertRecord(orderItem)
+}
+
+// GetOrdersByUserID 获取用户订单列表
+func GetOrdersByUserID(userID int64) ([]domain.Order, error) {
+	var orders []domain.Order
+	if err := DB.Where("user_id = ?", userID).Order("created_at DESC").Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+// GetOrderByID 根据订单ID获取订单
+func GetOrderByID(orderID int64) (*domain.Order, error) {
+	var order domain.Order
+	if err := GetRecordByField[domain.Order, int64]("order_id", orderID, &order); err != nil {
+		return nil, err
+	}
+	return &order, nil
+}
+
+// GetOrderItemsByOrderID 根据订单ID获取订单商品
+func GetOrderItemsByOrderID(orderID int64) ([]domain.OrderItem, error) {
+	var orderItems []domain.OrderItem
+	if err := GetRecordsByField[domain.OrderItem, int64]("order_id", orderID, &orderItems); err != nil {
+		return nil, err
+	}
+	return orderItems, nil
+}

@@ -1,14 +1,12 @@
 package api
 
 import (
-	"errors"
-	"github.com/Rezarit/E-commerce/api/auth"
 	"github.com/Rezarit/E-commerce/api/common"
 	"github.com/Rezarit/E-commerce/domain"
 	"github.com/Rezarit/E-commerce/pkg/response"
 	"github.com/Rezarit/E-commerce/service"
 	"github.com/gin-gonic/gin"
-	"strconv"
+	"log"
 )
 
 func Register(client *gin.Context) {
@@ -19,21 +17,12 @@ func Register(client *gin.Context) {
 
 	// 执行业务逻辑
 	user, err := service.Register(userRegisterRequest)
-	if err != nil {
-		// 处理业务错误
-		var bizErr *domain.BusinessError
-		if !errors.As(err, &bizErr) {
-			bizErr = &domain.BusinessError{
-				Code: domain.ErrCodeUnknown,
-				Msg:  "未知错误",
-			}
-		}
-		response.Fail(client, bizErr.Code, bizErr.Msg)
+	if !common.HandleBusinessError(client, err) {
 		return
 	}
 
 	response.Success(client, "用户创建成功", domain.UserRegisterResponse{
-		Username: user.Username,
+		UserID: user.UserID,
 	})
 }
 
@@ -44,22 +33,13 @@ func Login(client *gin.Context) {
 	}
 
 	// 执行业务逻辑
-	accessToken, refreshToken, err := service.Login(userLoginRequest)
-	if err != nil {
-		// 处理业务错误
-		var bizErr *domain.BusinessError
-		if !errors.As(err, &bizErr) {
-			bizErr = &domain.BusinessError{
-				Code: domain.ErrCodeUnknown,
-				Msg:  "未知错误",
-			}
-		}
-
-		response.Fail(client, bizErr.Code, bizErr.Msg)
+	userID, accessToken, refreshToken, err := service.Login(userLoginRequest)
+	if !common.HandleBusinessError(client, err) {
 		return
 	}
 
 	response.Success(client, "登录成功", domain.UserLoginResponse{
+		UserID:       userID,
 		Username:     userLoginRequest.Username,
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -68,17 +48,16 @@ func Login(client *gin.Context) {
 
 // RefreshAccessToken 刷新AT
 func RefreshAccessToken(client *gin.Context) {
-	authHeader := auth.GetAuthHeader(client)
+	// 读取Authorization请求头
+	authHeader := client.GetHeader("Authorization")
+	if authHeader == "" {
+		log.Printf("[登录态验证失败] 请求头Authorization为空 | 请求路径：%s", client.FullPath())
+		response.Fail(client, domain.ErrCodeTokenEmpty, "请先登录")
+		return
+	}
+
 	refreshedAccessToken, err := service.RefreshAccessToken(authHeader)
-	if err != nil {
-		var bizErr *domain.BusinessError
-		if !errors.As(err, &bizErr) {
-			bizErr = &domain.BusinessError{
-				Code: domain.ErrCodeUnknown,
-				Msg:  "未知错误",
-			}
-		}
-		response.Fail(client, bizErr.Code, bizErr.Msg)
+	if !common.HandleBusinessError(client, err) {
 		return
 	}
 
@@ -94,18 +73,14 @@ func UpdateUserPassword(client *gin.Context) {
 	if !isPass {
 		return
 	}
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
 
 	//执行更新指令
-	err := service.UpdateUserPassword(req.Username, req.Password, req.NewPassword)
-	if err != nil {
-		var bizErr *domain.BusinessError
-		if !errors.As(err, &bizErr) {
-			bizErr = &domain.BusinessError{
-				Code: domain.ErrCodeUnknown,
-				Msg:  "未知错误",
-			}
-		}
-		response.Fail(client, bizErr.Code, bizErr.Msg)
+	err := service.UpdateUserPassword(userID, req.Username, req.Password, req.NewPassword)
+	if !common.HandleBusinessError(client, err) {
 		return
 	}
 
@@ -114,16 +89,12 @@ func UpdateUserPassword(client *gin.Context) {
 }
 
 func ParseUserID(client *gin.Context) int64 {
-	userIDStr, isPass := common.ParseParam("user_id", client)
-	if !isPass {
+	userID, exists := client.Get("user_id")
+	if !exists {
+		response.Fail(client, domain.ErrCodeTokenInvalid, "用户未登录")
 		return 0
 	}
-	userID, err := strconv.ParseInt(userIDStr.(string), 10, 64)
-	if err != nil {
-		response.Fail(client, domain.ErrCodeJSONParseFailed, "参数解析失败")
-		return 0
-	}
-	return userID
+	return userID.(int64)
 }
 
 func UpdateUserInfoByID(client *gin.Context) {
@@ -140,15 +111,7 @@ func UpdateUserInfoByID(client *gin.Context) {
 
 	// 执行业务逻辑
 	err := service.UpdateUserInfoByID(userID, user)
-	if err != nil {
-		var bizErr *domain.BusinessError
-		if !errors.As(err, &bizErr) {
-			bizErr = &domain.BusinessError{
-				Code: domain.ErrCodeUnknown,
-				Msg:  "未知错误",
-			}
-		}
-		response.Fail(client, bizErr.Code, bizErr.Msg)
+	if !common.HandleBusinessError(client, err) {
 		return
 	}
 
@@ -164,19 +127,10 @@ func GetUserInfoById(client *gin.Context) {
 
 	//执行查询指令
 	userInfo, err := service.GetUserInfoById(userID)
-	if err != nil {
-		var bizErr *domain.BusinessError
-		if errors.As(err, &bizErr) {
-		} else {
-			bizErr = &domain.BusinessError{
-				Code: domain.ErrCodeUnknown,
-				Msg:  "未知错误",
-			}
-		}
-		response.Fail(client, bizErr.Code, bizErr.Msg)
+	if !common.HandleBusinessError(client, err) {
 		return
 	}
-	
+
 	//成功响应
 	response.Success(client, "用户信息查询成功", userInfo)
 }

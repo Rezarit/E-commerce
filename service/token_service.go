@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"github.com/Rezarit/E-commerce/domain"
 	"github.com/Rezarit/E-commerce/pkg/config"
 	"github.com/Rezarit/E-commerce/pkg/token"
@@ -19,8 +20,12 @@ func ParseAccessToken(tokenStr string) (*domain.CustomClaims, error) {
 	claims := &domain.CustomClaims{}
 	err := token.ParseToken(tokenStr, claims)
 	if err != nil {
-		log.Printf("[解析AccessToken失败] Token：%s，错误：%v", tokenStr[:10], err)
-		return nil, errors.New("access token解析失败：" + err.Error())
+		tokenPreview := tokenStr
+		if len(tokenStr) > 10 {
+			tokenPreview = tokenStr[:10]
+		}
+		log.Printf("[解析AccessToken失败] Token：%s，错误：%v", tokenPreview, err)
+		return nil, fmt.Errorf("access token解析失败：%w", err)
 	}
 	return claims, nil
 }
@@ -30,7 +35,11 @@ func ParseRefreshToken(tokenStr string) (*domain.RefreshTokenClaims, error) {
 	claims := &domain.RefreshTokenClaims{}
 	err := token.ParseToken(tokenStr, claims)
 	if err != nil {
-		log.Printf("[解析RefreshToken失败] Token：%s，错误：%v", tokenStr[:10], err)
+		tokenPreview := tokenStr
+		if len(tokenStr) > 10 {
+			tokenPreview = tokenStr[:10]
+		}
+		log.Printf("[解析RefreshToken失败] Token：%s，错误：%v", tokenPreview, err)
 		return nil, errors.New("refresh token解析失败：" + err.Error())
 	}
 	return claims, nil
