@@ -1,7 +1,7 @@
 package dao
 
 import (
-	"github.com/Rezarit/E-commerce/domain"
+	"github.com/Rezarit/go-seckill-system/domain"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

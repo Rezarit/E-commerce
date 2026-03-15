@@ -1,7 +1,7 @@
 package response
 
 import (
-	"github.com/Rezarit/E-commerce/domain"
+	"github.com/Rezarit/go-seckill-system/domain"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )

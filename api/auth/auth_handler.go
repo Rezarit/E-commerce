@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"github.com/Rezarit/E-commerce/domain"
-	"github.com/Rezarit/E-commerce/pkg/response"
+	"github.com/Rezarit/go-seckill-system/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/response"
 	"github.com/gin-gonic/gin"
 	"log"
 )

@@ -1,6 +1,6 @@
-# E-commerce Backend (2026.03)
+# 高并发秒杀系统重构记录 (2026.03)
 
-基于Go+Gin+GORM+MySql+JWT的电商后端系统，实现了完整的购物流程。
+基于**Go+Gin+GORM+MySql+JWT**的电商后端系统，实现了完整的购物流程。
 
 ## 技术栈
 - Go + Gin框架
@@ -14,27 +14,15 @@
 - ✅ 购物车 (添加/查看/删除)
 - ✅ 订单系统 (下单/列表/详情)
 
-## 项目亮点
+## 技术架构
 
-### 1. 原子函数设计
-将复杂业务逻辑拆分成小函数，提高可测试性和可维护性：
-
-``` go
-// 下单流程拆分成原子函数
-func MakeOrder(userID int64, address string) (int64, error)
-func getCartItems(userID int64) ([]domain.Cart, error)
-func createOrder(userID int64, address string, carts []domain.Cart) (int64, error)
-func processCartItem(orderID int64, cart domain.Cart) error
-func checkStock(product *domain.Product, quantity int) error
-```
-
-### 2. 分层架构
+### 分层架构设计
 - **API层**: HTTP请求处理
 - **Service层**: 业务逻辑实现  
 - **DAO层**: 数据库操作封装
 - **Domain层**: 数据模型定义
 
-### 3. 错误处理标准化
+### 错误处理标准化
 ``` go
 type BusinessError struct {
     Code int    `json:"code"`
@@ -42,43 +30,7 @@ type BusinessError struct {
 }
 ```
 
-## 数据库设计
-``` go
-// 订单表
-type Order struct {
-    OrderID   int64           `gorm:"primaryKey"`
-    UserID    int64           `gorm:"index"`
-    Address   string          `gorm:"not null"`
-    Total     decimal.Decimal `gorm:"type:decimal(10,2)"`
-    Status    string          `gorm:"default:'pending'"`
-    CreatedAt time.Time       `gorm:"autoCreateTime"`
-}
 
-// 订单商品表
-type OrderItem struct {
-    OrderItemID int64           `gorm:"primaryKey"`
-    OrderID     int64           `gorm:"index"`
-    ProductID   int64           
-    ProductName string          `gorm:"not null"`
-    Quantity    int             `gorm:"not null"`
-    Price       decimal.Decimal `gorm:"type:decimal(10,2)"`
-}
-```
-
-## API接口
-``` go
-POST /order/create     # 下单
-GET  /order/list      # 订单列表
-GET  /order/info/:id  # 订单详情
-
-POST /cart/add/:id    # 加入购物车
-GET  /cart/list       # 购物车列表
-DELETE /cart/remove/:id # 移除购物车
-
-GET  /product/list    # 商品列表
-POST /product/search  # 搜索商品
-GET  /product/info/:id # 商品详情
-```
 
 ## 性能压测结果
 
@@ -86,6 +38,7 @@ GET  /product/info/:id # 商品详情
 
 #### 2026.03.14 - 商品列表接口（读操作）
 - **工具**: hey
+- **测试环境**: 本地开发环境（Windows 11 + WSL2）
 - **并发**: 50
 - **时长**: 30秒
 - **QPS**: 10,196 请求/秒
@@ -95,6 +48,7 @@ GET  /product/info/:id # 商品详情
 
 #### 2026.03.14 - 订单创建接口（写操作）
 - **工具**: hey
+- **测试环境**: 本地开发环境（Windows 11 + WSL2）
 - **并发**: 100
 - **时长**: 30秒
 - **QPS**: 完全失败
@@ -107,14 +61,8 @@ GET  /product/info/:id # 商品详情
 2. ❌ **写操作严重瓶颈** - 高并发下完全失败
 3. 🔧 **优化方向** - 需要添加乐观锁、事务管理等并发控制机制
 
-## 学习收获
-1. **电商系统架构** - 完整购物流程实现
-2. **Go开发技能** - Gin+GORM+MySql+JWT 实战经验
-3. **代码质量** - 原子函数设计思想
-4. **工程化思维** - 分层架构和错误处理
-
 ## 经验总结与吐槽 💡
-- **分层架构的思想很重要**，现在重构的项目就是从这个思路出发的，由**api层、service层、dao层、domain层**组成。大一下写这个项目的时候，把这四层揉到一起了，业务逻辑极其混乱，导致我在初期重读代码的时候特别头疼。后面废了大力气，才把业务逻辑拆分成不同的层，代码结构变得清晰很多。
+- **分层架构的思想很重要**，现在重构的项目就是从这个思路出发的，由**api层、service层、dao层、domain层**组成。大一下写这个项目的时候，把这四层揉到一起了，业务逻辑极其混乱，导致我在初期重读代码的时候特别头疼。后面废了大力气，把业务逻辑拆分成不同的层，代码结构才变得清晰。
 ---
 -   最开始在写登录接口的时候，**请求和响应**没有**分开处理**，也就是说，我前端传来请求，我直接bind到user结构体，而不是registerRequest。这导致了个什么后果呢？这导致我返回响应时，把user的password也返回了。这是个严重的安全漏洞。于是我就推倒重写，为**请求和响应分别设计结构体**，这样就解决了传入和返回不必要的字段的问题。我觉得这个思路太巧妙了哈哈哈。
 ---

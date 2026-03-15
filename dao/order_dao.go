@@ -1,6 +1,6 @@
 package dao
 
-import "github.com/Rezarit/E-commerce/domain"
+import "github.com/Rezarit/go-seckill-system/domain"
 
 // CreateOrder 创建订单
 func CreateOrder(order *domain.Order) error {

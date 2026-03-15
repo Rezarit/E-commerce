@@ -1,9 +1,9 @@
 package service
 
 import (
-	"github.com/Rezarit/E-commerce/dao"
-	"github.com/Rezarit/E-commerce/domain"
-	"github.com/Rezarit/E-commerce/pkg/validator"
+	"github.com/Rezarit/go-seckill-system/dao"
+	"github.com/Rezarit/go-seckill-system/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/validator"
 	"log"
 )
 

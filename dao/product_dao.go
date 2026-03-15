@@ -1,7 +1,7 @@
 package dao
 
 import (
-	"github.com/Rezarit/E-commerce/domain"
+	"github.com/Rezarit/go-seckill-system/domain"
 )
 
 // CheckProductNameExists 商品名是否存在

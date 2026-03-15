@@ -1,12 +1,12 @@
 package middleware
 
 import (
-	"github.com/Rezarit/E-commerce/api"
-	"github.com/Rezarit/E-commerce/api/auth"
-	"github.com/Rezarit/E-commerce/domain"
-	"github.com/Rezarit/E-commerce/pkg/response"
-	"github.com/Rezarit/E-commerce/pkg/token"
-	"github.com/Rezarit/E-commerce/service"
+	"github.com/Rezarit/go-seckill-system/api"
+	"github.com/Rezarit/go-seckill-system/api/auth"
+	"github.com/Rezarit/go-seckill-system/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/response"
+	"github.com/Rezarit/go-seckill-system/pkg/token"
+	"github.com/Rezarit/go-seckill-system/service"
 	"github.com/gin-gonic/gin"
 	"log"
 )

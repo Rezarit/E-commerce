@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/Rezarit/E-commerce/pkg/config"
-	"github.com/Rezarit/E-commerce/route"
+	"github.com/Rezarit/go-seckill-system/pkg/config"
+	"github.com/Rezarit/go-seckill-system/route"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
 )

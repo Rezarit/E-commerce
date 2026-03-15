@@ -2,8 +2,8 @@ package token
 
 import (
 	"errors"
-	"github.com/Rezarit/E-commerce/domain"
-	"github.com/Rezarit/E-commerce/pkg/config"
+	"github.com/Rezarit/go-seckill-system/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/config"
 	"github.com/dgrijalva/jwt-go"
 	"log"
 	"strings"

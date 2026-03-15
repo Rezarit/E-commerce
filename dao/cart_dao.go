@@ -1,6 +1,6 @@
 package dao
 
-import "github.com/Rezarit/E-commerce/domain"
+import "github.com/Rezarit/go-seckill-system/domain"
 
 func AddToCart(cart domain.Cart) error {
 	err := InsertRecord[domain.Cart](&cart)

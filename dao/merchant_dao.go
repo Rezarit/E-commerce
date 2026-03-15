@@ -1,6 +1,6 @@
 package dao
 
-import "github.com/Rezarit/E-commerce/domain"
+import "github.com/Rezarit/go-seckill-system/domain"
 
 // CheckMerchantNameExists 检查商户名是否已存在
 func CheckMerchantNameExists(merchantName string) (bool, error) {

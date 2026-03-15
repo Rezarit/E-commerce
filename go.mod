@@ -1,8 +1,9 @@
-module github.com/Rezarit/E-commerce
+module github.com/Rezarit/go-seckill-system
 
 go 1.25.0
 
 require (
+	github.com/Rezarit/E-commerce v0.0.0-20260313213044-60e36ba63435
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-sql-driver/mysql v1.9.0

@@ -1,9 +1,9 @@
 package route
 
 import (
-	"github.com/Rezarit/E-commerce/api"
-	"github.com/Rezarit/E-commerce/api/middleware"
-	"github.com/Rezarit/E-commerce/dao"
+	"github.com/Rezarit/go-seckill-system/api"
+	"github.com/Rezarit/go-seckill-system/api/middleware"
+	"github.com/Rezarit/go-seckill-system/dao"
 	"github.com/gin-gonic/gin"
 )
 

@@ -1,10 +1,10 @@
 package api
 
 import (
-	"github.com/Rezarit/E-commerce/api/common"
-	"github.com/Rezarit/E-commerce/domain"
-	"github.com/Rezarit/E-commerce/pkg/response"
-	"github.com/Rezarit/E-commerce/service"
+	"github.com/Rezarit/go-seckill-system/api/common"
+	"github.com/Rezarit/go-seckill-system/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/response"
+	"github.com/Rezarit/go-seckill-system/service"
 	"github.com/gin-gonic/gin"
 	"log"
 	"strconv"

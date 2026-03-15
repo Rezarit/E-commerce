@@ -1,8 +1,8 @@
 package service
 
 import (
-	"github.com/Rezarit/E-commerce/dao"
-	"github.com/Rezarit/E-commerce/domain"
+	"github.com/Rezarit/go-seckill-system/dao"
+	"github.com/Rezarit/go-seckill-system/domain"
 	"log"
 	"strings"
 )

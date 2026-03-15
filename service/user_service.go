@@ -2,11 +2,11 @@ package service
 
 import (
 	"errors"
-	"github.com/Rezarit/E-commerce/dao"
-	"github.com/Rezarit/E-commerce/domain"
-	"github.com/Rezarit/E-commerce/pkg/security"
-	"github.com/Rezarit/E-commerce/pkg/token"
-	"github.com/Rezarit/E-commerce/pkg/validator"
+	"github.com/Rezarit/go-seckill-system/dao"
+	"github.com/Rezarit/go-seckill-system/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/security"
+	"github.com/Rezarit/go-seckill-system/pkg/token"
+	"github.com/Rezarit/go-seckill-system/pkg/validator"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"log"
