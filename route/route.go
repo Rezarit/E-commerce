@@ -3,16 +3,10 @@ package route
 import (
 	"github.com/Rezarit/go-seckill-system/api"
 	"github.com/Rezarit/go-seckill-system/api/middleware"
-	"github.com/Rezarit/go-seckill-system/dao"
 	"github.com/gin-gonic/gin"
 )
 
 func InitRoute() *gin.Engine {
-	err := dao.InitDatabase()
-	if err != nil {
-		panic(err)
-	}
-
 	Router := gin.Default()
 
 	//登录前

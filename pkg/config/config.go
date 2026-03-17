@@ -12,9 +12,20 @@ type JWTConfig struct {
 	RefreshTokenExpireHour int    `mapstructure:"refresh_token_expire_hour"`
 }
 
+// DatabaseConfig 数据库配置结构体
+type DatabaseConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	DBName   string `mapstructure:"dbname"`
+}
+
 // GlobalConfig 全局配置
 type GlobalConfig struct {
-	JWT JWTConfig `mapstructure:"jwt"`
+	JWT      JWTConfig      `mapstructure:"jwt"`
+	Redis    RedisConfig    `mapstructure:"redis"`
+	Database DatabaseConfig `mapstructure:"database"`
 }
 
 var Cfg GlobalConfig
@@ -34,4 +45,44 @@ func InitConfig() {
 	if err := viper.Unmarshal(&Cfg); err != nil {
 		log.Fatalf("解析配置失败: %v", err)
 	}
+}
+
+// RedisConfig Redis配置结构体
+type RedisConfig struct {
+	Addr     string `yaml:"addr"` // Redis地址: "localhost:6379"
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
+	PoolSize int    `yaml:"pool_size"`
+}
+
+func GetRedisConfig() *RedisConfig {
+	redisCfg := &RedisConfig{}
+	err := viper.UnmarshalKey("redis", redisCfg)
+	if err != nil {
+		return nil
+	}
+	return redisCfg
+}
+
+// GetDatabaseConfig 获取数据库配置
+func GetDatabaseConfig() *DatabaseConfig {
+	dbCfg := &DatabaseConfig{}
+
+	if !viper.IsSet("database") {
+		log.Fatalf("配置文件中未找到database配置，请在config.yaml中配置数据库信息")
+	}
+
+	err := viper.UnmarshalKey("database", dbCfg)
+	if err != nil {
+		log.Fatalf("解析数据库配置失败: %v", err)
+	}
+	
+	// 验证必填字段
+	if dbCfg.Host == "" || dbCfg.User == "" || dbCfg.DBName == "" {
+		log.Fatalf("数据库配置不完整，请检查config.yaml文件")
+	}
+	
+	log.Printf("使用配置文件中的数据库配置: %s@%s:%d/%s",
+		dbCfg.User, dbCfg.Host, dbCfg.Port, dbCfg.DBName)
+	return dbCfg
 }

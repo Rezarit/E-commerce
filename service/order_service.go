@@ -33,9 +33,10 @@ func MakeOrder(userID int64, address string) (int64, error) {
 	return orderID, nil
 }
 
-// getCartItems 获取用户购物车商品
+// getCartItems 获取用户购物车商品（使用Redis）
 func getCartItems(userID int64) ([]domain.Cart, error) {
-	carts, err := dao.ShowCart(userID)
+	// 使用Redis服务获取购物车（保证数据一致性）
+	carts, err := redisService.GetCartRedis(userID)
 	if err != nil {
 		log.Printf("[Service] 获取购物车失败 | 用户ID：%d | 错误：%v", userID, err)
 		return nil, &domain.BusinessError{
@@ -180,28 +181,29 @@ func createOrderItem(orderID int64, cart domain.Cart, product *domain.Product) e
 
 // updateProductStock 更新商品库存
 func updateProductStock(product *domain.Product, quantity int) error {
-	product.Stock -= quantity
-	if err := dao.UpdateProduct(product); err != nil {
-		log.Printf("[Service] 扣减库存失败 | 商品ID：%d | 错误：%v", product.ProductID, err)
+	newStock, err := stockDeductService.DeductStock(product.ProductID, quantity)
+	if err != nil {
+		log.Printf("扣减库存失败: %v", err)
 		return &domain.BusinessError{
 			Code: domain.ErrCodeDBError,
-			Msg:  "扣减库存失败",
+			Msg:  "更新商品库存失败",
 		}
 	}
+
+	log.Printf("库存减扣成功 | 商品ID: %d | 数量: %d | 新库存: %d", product.ProductID, quantity, newStock)
 	return nil
 }
 
-// clearCart 清空购物车
+// clearCart 清空购物车（使用Redis，直接删除整个购物车）
 func clearCart(userID int64, carts []domain.Cart) error {
-	for _, cart := range carts {
-		if err := dao.RemoveFromCart(userID, cart.ProductID); err != nil {
-			log.Printf("[Service] 清空购物车失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, cart.ProductID, err)
-			return &domain.BusinessError{
-				Code: domain.ErrCodeDBError,
-				Msg:  "清空购物车失败",
-			}
-		}
+	// 使用Redis服务直接清空整个购物车（比逐个删除高效）
+	err := redisService.ClearCartRedis(userID)
+	if err != nil {
+		log.Printf("[Service] 清空购物车失败 | 用户ID：%d | 错误：%v", userID, err)
+		return err
 	}
+
+	log.Printf("[Service] 清空购物车成功 | 用户ID：%d", userID)
 	return nil
 }
 

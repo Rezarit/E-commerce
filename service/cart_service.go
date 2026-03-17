@@ -22,19 +22,11 @@ func AddToCart(userID, productID int64, quantity int) error {
 		return err
 	}
 
-	resp := domain.Cart{
-		UserID:    userID,
-		ProductID: productID,
-		Quantity:  quantity,
-	}
-
-	err := dao.AddToCart(resp)
+	// 使用Redis服务加入购物车
+	err := redisService.AddToCartRedis(userID, productID, quantity)
 	if err != nil {
 		log.Printf("[Service] 加入购物车失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, productID, err)
-		return &domain.BusinessError{
-			Code: domain.ErrCodeDBError,
-			Msg:  "加入购物车失败",
-		}
+		return err
 	}
 
 	log.Printf("[Service] 加入购物车成功 | 用户ID：%d | 商品ID：%d", userID, productID)
@@ -45,13 +37,10 @@ func AddToCart(userID, productID int64, quantity int) error {
 func ShowCart(userID int64) ([]domain.Cart, error) {
 	log.Printf("[Service] 获取购物车商品列表 | 用户ID：%d", userID)
 
-	carts, err := dao.ShowCart(userID)
+	carts, err := redisService.GetCartRedis(userID)
 	if err != nil {
 		log.Printf("[Service] 获取购物车商品列表失败 | 用户ID：%d | 错误：%v", userID, err)
-		return nil, &domain.BusinessError{
-			Code: domain.ErrCodeDBError,
-			Msg:  "获取购物车商品列表失败",
-		}
+		return nil, err
 	}
 
 	log.Printf("[Service] 获取购物车商品列表成功 | 用户ID：%d | 商品数量：%d", userID, len(carts))

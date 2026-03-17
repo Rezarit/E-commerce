@@ -1,7 +1,9 @@
 package dao
 
 import (
+	"fmt"
 	"github.com/Rezarit/go-seckill-system/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -12,8 +14,16 @@ import (
 var DB *gorm.DB
 
 func InitDatabase() error {
+	// 从配置中获取数据库配置
+	dbCfg := config.GetDatabaseConfig()
+
+	// 构建DSN
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		dbCfg.User, dbCfg.Password, dbCfg.Host, dbCfg.Port, dbCfg.DBName)
+
 	log.Println("[数据库] 开始初始化数据库连接...")
-	dsn := "root:fzfz1314@tcp(127.0.0.1:3306)/e_commerce?charset=utf8mb4&parseTime=True&loc=Local"
+	log.Printf("[数据库] 连接信息: %s@%s:%d/%s",
+		dbCfg.User, dbCfg.Host, dbCfg.Port, dbCfg.DBName)
 
 	// 初始化 GORM 连接
 	var err error
@@ -32,9 +42,9 @@ func InitDatabase() error {
 	if err != nil {
 		return err
 	}
-	// 连接池配置
-	sqlDB.SetMaxOpenConns(20)                  // 最大打开连接数
-	sqlDB.SetMaxIdleConns(10)                  // 最大空闲连接数
+	// 连接池配置（优化高并发场景）
+	sqlDB.SetMaxOpenConns(500)              // 最大打开连接数：增加到500
+	sqlDB.SetMaxIdleConns(200)              // 最大空闲连接数：增加到200
 	sqlDB.SetConnMaxLifetime(30 * time.Minute) // 连接存活时间
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute) // 连接空闲超时
 

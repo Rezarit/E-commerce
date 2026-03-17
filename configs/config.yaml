@@ -2,3 +2,16 @@ jwt:
   secret: "b2ec7fc36e4b1eec15c40f9ede0df791133554141cb4a09e75ca255f2ed2e92c"
   access_token_expire_hour: 2
   refresh_token_expire_hour: 24
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+  pool_size: 500  # 优化高并发场景，增加到500个连接
+
+database:
+  host: "127.0.0.1"
+  port: 3306
+  user: "root"
+  password: "fzfz1314"
+  dbname: "go_seckill_system"

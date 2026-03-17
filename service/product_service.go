@@ -3,6 +3,7 @@ package service
 import (
 	"github.com/Rezarit/go-seckill-system/dao"
 	"github.com/Rezarit/go-seckill-system/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/redis"
 	"github.com/Rezarit/go-seckill-system/pkg/validator"
 	"log"
 )
@@ -209,14 +210,38 @@ func GetProductDetail(productID int64) (*domain.Product, error) {
 	log.Printf("[Service] 开始获取商品详情 | 商品ID：%d", productID)
 	// 检查商品是否存在
 	if err := CheckProductIDExists(productID); err != nil {
+		go func() {
+			if cacheErr := redisService.CacheNullProduct(productID, redis.DefaultNullCacheTTL); cacheErr != nil {
+				log.Printf("[Service] 异步缓存空商品失败 | 商品ID：%d | 错误：%v", productID, cacheErr)
+			}
+		}()
 		return nil, err
 	}
 
-	product, err := dao.GetProductByID(productID)
+	// 从缓存获取商品详情
+	product, err := redisService.GetProductFromCache(productID)
+	if err == nil {
+		log.Printf("[Service] 从缓存获取商品详情成功 | 商品ID：%d", productID)
+		return product, nil
+	}
+
+	// 缓存未命中，从数据库获取
+	product, err = dao.GetProductByID(productID)
 	if err != nil {
 		log.Printf("[Service] 获取商品详情失败 | 商品ID：%d | 错误：%v", productID, err)
-		return nil, &domain.BusinessError{Code: domain.ErrCodeDBError, Msg: "获取商品详情失败"}
+		return nil, &domain.BusinessError{
+			Code: domain.ErrCodeDBError,
+			Msg:  "获取商品详情失败",
+		}
 	}
+
+	// 缓存商品详情
+	go func() {
+		if cacheErr := redisService.CacheProduct(product, redis.DefaultProductCacheTTL); cacheErr != nil {
+			log.Printf("[Service] 异步缓存商品详情失败 | 商品ID：%d | 错误：%v", productID, cacheErr)
+		}
+	}()
+
 	log.Printf("[Service] 获取商品详情成功 | 商品ID：%d", productID)
 	return product, nil
 }
