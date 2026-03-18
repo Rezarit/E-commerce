@@ -77,10 +77,6 @@ func CheckProductNameExists(productName string) error {
 
 // UpdateProduct 更新商品
 func UpdateProduct(product domain.ProductUpdateRequest, userID int64) error {
-	// 检查商品是否存在
-	if err := CheckProductIDExists(product.ProductID); err != nil {
-		return err
-	}
 	// 检查商品归属权
 	if err := CheckProductOwnership(product.ProductID, userID); err != nil {
 		return err
@@ -109,26 +105,8 @@ func UpdateProduct(product domain.ProductUpdateRequest, userID int64) error {
 	return nil
 }
 
-// CheckProductIDExists 检查商品ID是否存在
-func CheckProductIDExists(productID int64) error {
-	exists, err := dao.CheckProductIDExists(productID)
-	if err != nil {
-		log.Printf("[Service] 检查商品ID是否存在失败 | 商品ID：%d | 错误：%v", productID, err)
-		return &domain.BusinessError{Code: domain.ErrCodeDBError, Msg: "检查商品ID失败"}
-	}
-	if !exists {
-		log.Printf("[Service] 商品ID不存在 | 商品ID：%d", productID)
-		return &domain.BusinessError{Code: domain.ErrCodeProductNotFound, Msg: "商品ID不存在"}
-	}
-	return nil
-}
-
 // DeleteProduct 删除商品
 func DeleteProduct(productID int64, userID int64) error {
-	// 检查商品是否存在
-	if err := CheckProductIDExists(productID); err != nil {
-		return err
-	}
 	// 检查商品归属权
 	if err := CheckProductOwnership(productID, userID); err != nil {
 		return err
@@ -207,19 +185,8 @@ func SearchProduct(keyword string) ([]domain.ProductSearchResponse, error) {
 
 // GetProductDetail 获取商品详情
 func GetProductDetail(productID int64) (*domain.Product, error) {
-	log.Printf("[Service] 开始获取商品详情 | 商品ID：%d", productID)
-	// 检查商品是否存在
-	if err := CheckProductIDExists(productID); err != nil {
-		go func() {
-			if cacheErr := redisService.CacheNullProduct(productID, redis.DefaultNullCacheTTL); cacheErr != nil {
-				log.Printf("[Service] 异步缓存空商品失败 | 商品ID：%d | 错误：%v", productID, cacheErr)
-			}
-		}()
-		return nil, err
-	}
-
 	// 从缓存获取商品详情
-	product, err := redisService.GetProductFromCache(productID)
+	product, err := cacheService.GetProductFromCache(productID)
 	if err == nil {
 		log.Printf("[Service] 从缓存获取商品详情成功 | 商品ID：%d", productID)
 		return product, nil
@@ -237,7 +204,7 @@ func GetProductDetail(productID int64) (*domain.Product, error) {
 
 	// 缓存商品详情
 	go func() {
-		if cacheErr := redisService.CacheProduct(product, redis.DefaultProductCacheTTL); cacheErr != nil {
+		if cacheErr := cacheService.CacheProduct(product, redis.DefaultProductCacheTTL); cacheErr != nil {
 			log.Printf("[Service] 异步缓存商品详情失败 | 商品ID：%d | 错误：%v", productID, cacheErr)
 		}
 	}()

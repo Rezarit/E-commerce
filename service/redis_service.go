@@ -13,28 +13,8 @@ import (
 	"time"
 )
 
-// RedisService Redis服务结构体
-type RedisService struct {
-	client          *redis.Client
-	addToCartScript *redis.Script
-}
-
-// NewAddToCartService 创建Redis服务实例
-func NewAddToCartService() (*RedisService, error) {
-	// 预加载购物车Lua脚本
-	scriptContent, err := loadLuaScript("scripts/lua/add_to_cart.lua")
-	if err != nil {
-		return nil, err
-	}
-
-	return &RedisService{
-		client:          myredis.GetClient(),
-		addToCartScript: redis.NewScript(scriptContent),
-	}, nil
-}
-
 // CacheNullProduct 缓存空商品到Redis
-func (s *RedisService) CacheNullProduct(productID int64, expiration time.Duration) error {
+func (s *CacheService) CacheNullProduct(productID int64, expiration time.Duration) error {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyProductNull, productID)
 
@@ -49,7 +29,7 @@ func (s *RedisService) CacheNullProduct(productID int64, expiration time.Duratio
 }
 
 // CacheProduct 缓存商品详情
-func (s *RedisService) CacheProduct(product *domain.Product, expiration time.Duration) error {
+func (s *CacheService) CacheProduct(product *domain.Product, expiration time.Duration) error {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyProductDetail, product.ProductID)
 
@@ -72,7 +52,7 @@ func (s *RedisService) CacheProduct(product *domain.Product, expiration time.Dur
 }
 
 // CacheProductStock 缓存商品库存（库存减扣专用）
-func (s *RedisService) CacheProductStock(productID int64, stock int32, expiration time.Duration) error {
+func (s *CacheService) CacheProductStock(productID int64, stock int32, expiration time.Duration) error {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeySeckillStock, productID)
 
@@ -87,7 +67,7 @@ func (s *RedisService) CacheProductStock(productID int64, stock int32, expiratio
 }
 
 // BatchCacheProductStocks 批量缓存商品库存（使用Pipeline）
-func (s *RedisService) BatchCacheProductStocks(stocks map[int64]int32, expiration time.Duration) error {
+func (s *CacheService) BatchCacheProductStocks(stocks map[int64]int32, expiration time.Duration) error {
 	ctx := context.Background()
 
 	pipe := s.client.Pipeline()
@@ -113,7 +93,7 @@ func (s *RedisService) BatchCacheProductStocks(stocks map[int64]int32, expiratio
 }
 
 // GetProductFromCache 从缓存获取商品详情
-func (s *RedisService) GetProductFromCache(productID int64) (*domain.Product, error) {
+func (s *CacheService) GetProductFromCache(productID int64) (*domain.Product, error) {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyProductDetail, productID)
 
@@ -154,7 +134,7 @@ func InitAllProductStock() error {
 	}
 
 	// 使用批量缓存函数
-	if err = redisService.BatchCacheProductStocks(stocks, myredis.DefaultSessionTTL); err != nil {
+	if err = cacheService.BatchCacheProductStocks(stocks, myredis.DefaultSessionTTL); err != nil {
 		log.Printf("[Service] 批量预热商品库存失败: %v", err)
 		return err
 	}
@@ -162,13 +142,13 @@ func InitAllProductStock() error {
 	return nil
 }
 
-// AddToCartRedis 将商品加入Redis购物车（使用预加载的Lua脚本，避免并发竞争）
-func (s *RedisService) AddToCartRedis(userID, productID int64, quantity int) error {
+// AddToCartRedis 将商品加入Redis购物车
+func (s *CartService) AddToCartRedis(userID, productID int64, quantity int) error {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyCart, userID)
 
 	// 执行预加载的Lua脚本
-	result, err := s.addToCartScript.Run(ctx, s.client, []string{key}, productID, quantity).Result()
+	result, err := s.luaScript.Run(ctx, s.client, []string{key}, productID, quantity).Result()
 	if err != nil {
 		log.Printf("[RedisService] 加入购物车失败 | 用户ID: %d | 商品ID: %d | 错误: %v", userID, productID, err)
 		return &domain.BusinessError{
@@ -192,7 +172,7 @@ func (s *RedisService) AddToCartRedis(userID, productID int64, quantity int) err
 }
 
 // GetCartRedis 获取Redis购物车内容
-func (s *RedisService) GetCartRedis(userID int64) ([]domain.Cart, error) {
+func (s *CartService) GetCartRedis(userID int64) ([]domain.Cart, error) {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyCart, userID)
 
@@ -215,27 +195,10 @@ func (s *RedisService) GetCartRedis(userID int64) ([]domain.Cart, error) {
 	// 转换Redis Hash到Cart结构
 	var carts []domain.Cart
 	for productIDStr, quantityStr := range result {
-		var productID int64
-		var quantity int
-
-		// 解析商品ID
-		productID, err := strconv.ParseInt(productIDStr, 10, 64)
+		productID, quantity, err := ParseCartItem(productIDStr, quantityStr)
 		if err != nil {
-			log.Printf("[RedisService] 解析商品ID失败: %s | 错误: %v", productIDStr, err)
-			continue // 跳过无效的商品ID
-		}
-
-		// 解析数量
-		quantity, err = strconv.Atoi(quantityStr)
-		if err != nil {
-			log.Printf("[RedisService] 解析数量失败: %s | 错误: %v", quantityStr, err)
-			continue // 跳过无效的数量
-		}
-
-		// 验证数量范围，如果超出范围则跳过该商品（防止异常数据）
-		if quantity <= 0 || quantity > 10000 {
-			log.Printf("[RedisService] 数量超出范围，跳过该商品: %d | 商品ID: %d", quantity, productID)
-			continue // 跳过无效的数量
+			log.Printf("[RedisService] 解析购物车商品失败 | 用户ID: %d | 商品ID: %s | 数量: %s | 错误: %v", userID, productIDStr, quantityStr, err)
+			continue // 跳过无效的商品
 		}
 
 		carts = append(carts, domain.Cart{
@@ -249,8 +212,27 @@ func (s *RedisService) GetCartRedis(userID int64) ([]domain.Cart, error) {
 	return carts, nil
 }
 
+// ParseCartItem 解析商品ID和数量
+func ParseCartItem(productIDStr, quantityStr string) (int64, int, error) {
+	var productID int64
+	var quantity int
+
+	// 解析商品ID
+	productID, err := strconv.ParseInt(productIDStr, 10, 64)
+	if err != nil {
+		log.Printf("[RedisService] 解析商品ID失败: %s | 错误: %v", productIDStr, err)
+	}
+
+	// 解析数量
+	quantity, err = strconv.Atoi(quantityStr)
+	if err != nil {
+		log.Printf("[RedisService] 解析数量失败: %s | 错误: %v", quantityStr, err)
+	}
+	return productID, quantity, err
+}
+
 // ClearCartRedis 清空Redis购物车
-func (s *RedisService) ClearCartRedis(userID int64) error {
+func (s *CartService) ClearCartRedis(userID int64) error {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyCart, userID)
 
@@ -267,7 +249,7 @@ func (s *RedisService) ClearCartRedis(userID int64) error {
 }
 
 // RemoveFromCartRedis 从Redis购物车移除商品
-func (s *RedisService) RemoveFromCartRedis(userID, productID int64) error {
+func (s *CartService) RemoveFromCartRedis(userID, productID int64) error {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyCart, userID)
 

@@ -5,38 +5,8 @@ import (
 	"errors"
 	"fmt"
 	myredis "github.com/Rezarit/go-seckill-system/pkg/redis"
-	"github.com/go-redis/redis/v8"
 	"log"
-	"os"
 )
-
-type StockDeductService struct {
-	client    *redis.Client
-	luaScript *redis.Script
-}
-
-// NewStockDeductService 创建一个新的库存扣减服务实例
-func NewStockDeductService() (*StockDeductService, error) {
-	scriptContent, err := loadLuaScript("scripts/lua/deduct_stock.lua")
-	if err != nil {
-		return nil, err
-	}
-
-	return &StockDeductService{
-		client:    myredis.GetClient(),
-		luaScript: redis.NewScript(scriptContent),
-	}, nil
-}
-
-// loadLuaScript 从文件加载Lua脚本
-func loadLuaScript(filePath string) (string, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Printf("加载Lua脚本失败: %v", err)
-		return "", err
-	}
-	return string(content), nil
-}
 
 // DeductStock 扣减商品库存
 func (s *StockDeductService) DeductStock(productID int64, quantity int) (int, error) {
