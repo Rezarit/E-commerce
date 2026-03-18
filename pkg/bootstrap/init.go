@@ -62,12 +62,12 @@ func Init() error {
 		return err
 	}
 
-	// 业务服务初始化（依赖基础设施）
-	if err := service.InitServiceInstances(); err != nil {
+	// 业务服务初始化
+	if err := service.LoadLuaScripts(); err != nil {
 		return err
 	}
 
-	// 业务初始化（依赖业务服务）
+	// 业务初始化
 	if err := initAllProductStock(); err != nil {
 		return err
 	} // 缓存预热

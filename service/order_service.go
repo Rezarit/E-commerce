@@ -33,10 +33,9 @@ func MakeOrder(userID int64, address string) (int64, error) {
 	return orderID, nil
 }
 
-// getCartItems 获取用户购物车商品（使用Redis）
+// getCartItems 获取用户购物车商品
 func getCartItems(userID int64) ([]domain.Cart, error) {
-	// 使用Redis服务获取购物车（保证数据一致性）
-	carts, err := redisService.GetCartRedis(userID)
+	carts, err := cartService.GetCartRedis(userID)
 	if err != nil {
 		log.Printf("[Service] 获取购物车失败 | 用户ID：%d | 错误：%v", userID, err)
 		return nil, &domain.BusinessError{
@@ -197,7 +196,7 @@ func updateProductStock(product *domain.Product, quantity int) error {
 // clearCart 清空购物车（使用Redis，直接删除整个购物车）
 func clearCart(userID int64, carts []domain.Cart) error {
 	// 使用Redis服务直接清空整个购物车（比逐个删除高效）
-	err := redisService.ClearCartRedis(userID)
+	err := cartService.ClearCartRedis(userID)
 	if err != nil {
 		log.Printf("[Service] 清空购物车失败 | 用户ID：%d | 错误：%v", userID, err)
 		return err

@@ -17,13 +17,8 @@ func AddToCart(userID, productID int64, quantity int) error {
 		}
 	}
 
-	// 验证商品是否存在
-	if err := CheckProductIDExists(productID); err != nil {
-		return err
-	}
-
 	// 使用Redis服务加入购物车
-	err := redisService.AddToCartRedis(userID, productID, quantity)
+	err := cartService.AddToCartRedis(userID, productID, quantity)
 	if err != nil {
 		log.Printf("[Service] 加入购物车失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, productID, err)
 		return err
@@ -37,7 +32,7 @@ func AddToCart(userID, productID int64, quantity int) error {
 func ShowCart(userID int64) ([]domain.Cart, error) {
 	log.Printf("[Service] 获取购物车商品列表 | 用户ID：%d", userID)
 
-	carts, err := redisService.GetCartRedis(userID)
+	carts, err := cartService.GetCartRedis(userID)
 	if err != nil {
 		log.Printf("[Service] 获取购物车商品列表失败 | 用户ID：%d | 错误：%v", userID, err)
 		return nil, err
@@ -51,11 +46,6 @@ func ShowCart(userID int64) ([]domain.Cart, error) {
 func RemoveFromCart(userID, productID int64) error {
 	log.Printf("[Service] 从购物车移除商品 | 用户ID：%d | 商品ID：%d", userID, productID)
 
-	// 检查商品是否在购物车中
-	if err := CheckCartItemExists(userID, productID); err != nil {
-		return err
-	}
-
 	err := dao.RemoveFromCart(userID, productID)
 	if err != nil {
 		log.Printf("[Service] 从购物车移除商品失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, productID, err)
@@ -66,26 +56,5 @@ func RemoveFromCart(userID, productID int64) error {
 	}
 
 	log.Printf("[Service] 从购物车移除商品成功 | 用户ID：%d | 商品ID：%d", userID, productID)
-	return nil
-}
-
-// CheckCartItemExists 检查购物车商品是否存在
-func CheckCartItemExists(userID, productID int64) error {
-	// 检查商品是否在购物车中
-	exists, err := dao.CheckCartItemExists(userID, productID)
-	if err != nil {
-		log.Printf("[Service] 检查购物车商品失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, productID, err)
-		return &domain.BusinessError{
-			Code: domain.ErrCodeDBError,
-			Msg:  "检查购物车商品失败",
-		}
-	}
-	if !exists {
-		log.Printf("[Service] 商品不在购物车中 | 用户ID：%d | 商品ID：%d", userID, productID)
-		return &domain.BusinessError{
-			Code: domain.ErrCodeParamInvalid,
-			Msg:  "商品不在购物车中",
-		}
-	}
 	return nil
 }
