@@ -7,11 +7,12 @@ import (
 
 // 订单状态常量
 const (
-	OrderStatusPending   = "pending"   // 待支付
-	OrderStatusPaid      = "paid"      // 已支付
-	OrderStatusShipping  = "shipping"  // 已发货
-	OrderStatusCompleted = "completed" // 已完成
-	OrderStatusCancelled = "cancelled" // 已取消
+	OrderStatusProcessing = "processing" // 处理中
+	OrderStatusPending    = "pending"    // 待支付
+	OrderStatusPaid       = "paid"       // 已支付
+	OrderStatusShipping   = "shipping"   // 已发货
+	OrderStatusCompleted  = "completed"  // 已完成
+	OrderStatusCancelled  = "cancelled"  // 已取消
 )
 
 type Order struct {

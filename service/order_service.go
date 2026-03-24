@@ -8,33 +8,30 @@ import (
 )
 
 // MakeOrder 下单
-func MakeOrder(userID int64, address string) (int64, error) {
+func MakeOrder(userID int64, address string) error {
 	log.Printf("[Service] 开始下单 | 用户ID：%d", userID)
 
-	// 获取用户购物车
-	carts, err := getCartItems(userID)
+	carts, err := GetCartItems(userID)
 	if err != nil {
-		return 0, err
+		return err
+	}
+	err = CheckCart(carts)
+	if err != nil {
+		return err
 	}
 
 	// 创建订单
-	orderID, err := createOrder(userID, address, carts)
+	err = createOrder(userID, address)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	// 清空购物车
-	err = clearCart(userID)
-	if err != nil {
-		return 0, err
-	}
-
-	log.Printf("[Service] 下单成功 | 订单ID：%d | 用户ID：%d", orderID, userID)
-	return orderID, nil
+	log.Printf("[Service] 下单成功 | 用户ID：%d", userID)
+	return nil
 }
 
-// getCartItems 获取用户购物车商品
-func getCartItems(userID int64) ([]domain.Cart, error) {
+// GetCartItems 获取用户购物车商品
+func GetCartItems(userID int64) ([]domain.Cart, error) {
 	carts, err := cartService.GetCartRedis(userID)
 	if err != nil {
 		log.Printf("[Service] 获取购物车失败 | 用户ID：%d | 错误：%v", userID, err)
@@ -43,20 +40,11 @@ func getCartItems(userID int64) ([]domain.Cart, error) {
 			Msg:  "获取购物车失败",
 		}
 	}
-
-	if len(carts) == 0 {
-		log.Printf("[Service] 购物车为空 | 用户ID：%d", userID)
-		return nil, &domain.BusinessError{
-			Code: domain.ErrCodeParamInvalid,
-			Msg:  "购物车为空",
-		}
-	}
-
 	return carts, nil
 }
 
-// createOrder 创建订单
-func createOrder(userID int64, address string, carts []domain.Cart) (int64, error) {
+// ExecuteOrderCreation 创建订单
+func ExecuteOrderCreation(userID int64, address string, carts []domain.Cart) (int64, error) {
 	// 计算订单总金额
 	total := calculateTotalAmount(carts)
 
@@ -65,7 +53,6 @@ func createOrder(userID int64, address string, carts []domain.Cart) (int64, erro
 		UserID:  userID,
 		Address: address,
 		Total:   total,
-		Status:  domain.OrderStatusPending,
 	}
 
 	if err := dao.CreateOrder(&order); err != nil {
@@ -82,6 +69,26 @@ func createOrder(userID int64, address string, carts []domain.Cart) (int64, erro
 	}
 
 	return order.OrderID, nil
+}
+
+// createOrder 创建订单
+func createOrder(userID int64, address string) error {
+	log.Printf("[Service] 接收到下单请求 | 用户ID: %d, 地址: %s", userID, address)
+
+	// 创建订单消息
+	orderMsg := &domain.OrderMessage{
+		UserID:  userID,
+		Address: address,
+	}
+
+	// 发送消息到MQ
+	err := SendMessage(orderMsg, "order")
+	if err != nil {
+		return err
+	}
+
+	log.Printf("[Service] 下单请求已成功发送到MQ | 用户ID: %d", userID)
+	return nil // 立刻返回成功
 }
 
 // calculateTotalAmount 计算订单总金额
@@ -104,32 +111,6 @@ func createOrderItemsAndUpdateStock(orderID int64, carts []domain.Cart) error {
 			return err
 		}
 	}
-	return nil
-}
-
-// processCartItem 处理单个购物车商品
-func processCartItem(orderID int64, cart domain.Cart) error {
-	// 获取商品信息
-	product, err := getProductInfo(cart.ProductID)
-	if err != nil {
-		return err
-	}
-
-	// 检查库存
-	if err = checkStock(product, cart.Quantity); err != nil {
-		return err
-	}
-
-	// 创建订单商品
-	if err = createOrderItem(orderID, cart, product); err != nil {
-		return err
-	}
-
-	// 扣减库存
-	if err = updateProductStock(product, cart.Quantity); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -190,19 +171,6 @@ func updateProductStock(product *domain.Product, quantity int) error {
 	}
 
 	log.Printf("库存减扣成功 | 商品ID: %d | 数量: %d | 新库存: %d", product.ProductID, quantity, newStock)
-	return nil
-}
-
-// clearCart 清空购物车
-func clearCart(userID int64) error {
-	// 使用Redis服务直接清空整个购物车
-	err := cartService.ClearCartRedis(userID)
-	if err != nil {
-		log.Printf("[Service] 清空购物车失败 | 用户ID：%d | 错误：%v", userID, err)
-		return err
-	}
-
-	log.Printf("[Service] 清空购物车成功 | 用户ID：%d", userID)
 	return nil
 }
 

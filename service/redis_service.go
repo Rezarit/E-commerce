@@ -13,6 +13,21 @@ import (
 	"time"
 )
 
+// OrderResult 订单结果
+func (s *OrderService) OrderResult(orderID, userID int64, expiration time.Duration) error {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyOrderResult, orderID, userID)
+
+	err := s.client.Set(ctx, key, orderID, expiration).Err()
+	if err != nil {
+		return &domain.BusinessError{
+			Code: domain.ErrCodeCacheError,
+			Msg:  "写入订单结果失败: " + err.Error(),
+		}
+	}
+	return nil
+}
+
 // CacheNullProduct 缓存空商品到Redis
 func (s *CacheService) CacheNullProduct(productID int64, expiration time.Duration) error {
 	ctx := context.Background()
@@ -263,4 +278,25 @@ func (s *CartService) RemoveFromCartRedis(userID, productID int64) error {
 	}
 
 	return nil
+}
+
+// GetStock 获取Redis商品库存
+func (s *CartService) GetStock(productID int64) (int, error) {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyCart, productID)
+	result, err := s.client.HGetAll(ctx, key).Result()
+	if err != nil {
+		return 0, &domain.BusinessError{
+			Code: domain.ErrCodeCacheError,
+			Msg:  "获取商品库存失败: " + err.Error(),
+		}
+	}
+	res, err := strconv.Atoi(result["quantity"])
+	if err != nil {
+		return 0, &domain.BusinessError{
+			Code: domain.ErrCodeCacheDeserializeError,
+			Msg:  "获取商品库存失败: " + err.Error(),
+		}
+	}
+	return res, nil
 }

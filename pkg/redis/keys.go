@@ -10,6 +10,7 @@ const (
 	KeyProductDetail = "cache:product:detail:%d" // 商品详情缓存
 	KeyProductNull   = "cache:product:null:%d"   // 商品空值缓存
 	KeySeckillStock  = "seckill:stock:%d"        // 秒杀库存
+	KeyOrderResult   = "user:order:%d:%d"        // 订单结果缓存
 
 	// 购物车相关
 	KeyCart = "cart:%d" // 用户购物车，使用Hash结构存储

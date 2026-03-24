@@ -26,11 +26,18 @@ type CacheService struct {
 	client *redis.Client
 }
 
+type OrderService struct {
+	client *redis.Client
+}
+
 var (
 	cartService        *CartService
 	stockDeductService *StockDeductService
 	cacheService       *CacheService
+	Order              *OrderService
 )
+
+type MessageHandler func(body []byte) error
 
 // LoadLuaScripts 初始化lua脚本
 func LoadLuaScripts() error {
@@ -87,3 +94,14 @@ func loadLuaScript(filePath string) (string, error) {
 	}
 	return string(content), nil
 }
+
+// InitService 初始化非脚本服务
+func InitService(redisClient *redis.Client) {
+	log.Println("[Service] 开始初始化服务实例...")
+
+	cacheService = &CacheService{client: redisClient}
+	Order = &OrderService{client: redisClient}
+
+	log.Println("[Service] 服务实例初始化成功")
+}
+

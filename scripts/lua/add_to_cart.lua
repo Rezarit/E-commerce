@@ -3,7 +3,7 @@
 -- KEYS[1]: 购物车key (cart:用户ID)
 -- ARGV[1]: 商品ID
 -- ARGV[2]: 要增加的数量
--- ARGV[3]: 最大允许数量（防止异常）
+-- ARGV[3]: 最大允许数量
 
 -- 使用HINCRBY实现真正的原子操作
 local new_quantity = redis.call('HINCRBY', KEYS[1], ARGV[1], tonumber(ARGV[2]))
