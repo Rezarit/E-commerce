@@ -53,8 +53,8 @@ func CheckProductName(productName string) error {
 		log.Printf("[Service] 商品名不能为空 | 商品名：%s | 错误：%v", productName, err)
 		return &domain.BusinessError{Code: domain.ErrCodeParamInvalid, Msg: err.Error()}
 	}
-	if err = validator.CheckLengthRange(trimmedName, "商品名", 1, 20); err != nil {
-		log.Printf("[Service] 商品名长度需在1-20位之间 | 商品名：%s | 错误：%v", productName, err)
+	if err = validator.CheckLengthRange(trimmedName, "商品名", 1, 200); err != nil {
+		log.Printf("[Service] 商品名长度需在1-200字节之间 | 商品名：%s | 错误：%v", productName, err)
 		return &domain.BusinessError{Code: domain.ErrCodeParamInvalid, Msg: err.Error()}
 	}
 	return nil
@@ -76,9 +76,9 @@ func CheckProductNameExists(productName string) error {
 }
 
 // UpdateProduct 更新商品
-func UpdateProduct(product domain.ProductUpdateRequest, userID int64) error {
+func UpdateProduct(productID int64, product domain.ProductUpdateRequest, userID int64) error {
 	// 检查商品归属权
-	if err := CheckProductOwnership(product.ProductID, userID); err != nil {
+	if err := CheckProductOwnership(productID, userID); err != nil {
 		return err
 	}
 	// 检查商品名是否符合要求
@@ -96,12 +96,12 @@ func UpdateProduct(product domain.ProductUpdateRequest, userID int64) error {
 	}
 
 	// 更新商品相关数据
-	log.Printf("[Service] 开始更新商品 | 商品ID：%d", product.ProductID)
+	log.Printf("[Service] 开始更新商品 | 商品ID：%d", productID)
 	if err := dao.UpdateProduct(&productToUpdate); err != nil {
-		log.Printf("[Service] 更新商品失败 | 商品ID：%d | 错误：%v", product.ProductID, err)
+		log.Printf("[Service] 更新商品失败 | 商品ID：%d | 错误：%v", productID, err)
 		return &domain.BusinessError{Code: domain.ErrCodeDBError, Msg: "更新商品失败"}
 	}
-	log.Printf("[Service] 更新商品成功 | 商品ID：%d", product.ProductID)
+	log.Printf("[Service] 更新商品成功 | 商品ID：%d", productID)
 	return nil
 }
 
@@ -211,4 +211,17 @@ func GetProductDetail(productID int64) (*domain.Product, error) {
 
 	log.Printf("[Service] 获取商品详情成功 | 商品ID：%d", productID)
 	return product, nil
+}
+
+func GetMerchantProductList(userID int64) ([]domain.Product, error) {
+	log.Printf("[Service] 开始获取商户商品列表 | 用户ID：%d", userID)
+	merchantID, err := dao.GetMerchantIDByUserID(userID)
+
+	products, err := dao.GetProductListByMerchantID(merchantID)
+	if err != nil {
+		log.Printf("[Service] 获取商户商品列表失败 | 商户ID：%d | 错误：%v", merchantID, err)
+		return nil, &domain.BusinessError{Code: domain.ErrCodeDBError, Msg: "获取商户商品列表失败"}
+	}
+	log.Printf("[Service] 获取商户商品列表成功 | 商户ID：%d | 商品数量：%d", merchantID, len(products))
+	return products, nil
 }

@@ -64,3 +64,23 @@ func SearchProduct(keyword string) ([]domain.Product, error) {
 	}
 	return products, nil
 }
+
+// GetProductListByMerchantID 根据商户ID获取商品列表
+func GetProductListByMerchantID(merchantID int64) ([]domain.Product, error) {
+	var products []domain.Product
+	err := GetRecordsByField[domain.Product, int64]("merchant_id", merchantID, &products)
+	if err != nil {
+		return nil, err
+	}
+	return products, nil
+}
+
+// GetMerchantIDByUserID 根据用户ID获取商户ID
+func GetMerchantIDByUserID(userID int64) (int64, error) {
+	var merchant domain.Merchant
+	err := GetRecordByField[domain.Merchant, int64]("user_id", userID, &merchant)
+	if err != nil {
+		return 0, err
+	}
+	return merchant.MerchantID, nil
+}

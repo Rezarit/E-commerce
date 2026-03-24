@@ -32,6 +32,11 @@ func CreatProduct(client *gin.Context) {
 
 // UpdateProduct 更新商品
 func UpdateProduct(client *gin.Context) {
+	productID := common.ParamID(client, "product_id")
+	if productID == 0 {
+		return
+	}
+
 	var product domain.ProductUpdateRequest
 	isPass := common.BindRequest(client, &product)
 	if !isPass {
@@ -43,7 +48,7 @@ func UpdateProduct(client *gin.Context) {
 		return
 	}
 
-	err := service.UpdateProduct(product, userID)
+	err := service.UpdateProduct(productID, product, userID)
 	if !common.HandleBusinessError(client, err) {
 		return
 	}
@@ -53,18 +58,14 @@ func UpdateProduct(client *gin.Context) {
 
 // DeleteProduct 删除商品
 func DeleteProduct(client *gin.Context) {
-	var product domain.ProductDeleteRequest
-	isPass := common.BindRequest(client, &product)
-	if !isPass {
-		return
-	}
+	productID := common.ParamID(client, "product_id")
 
 	userID := ParseUserID(client)
 	if userID == 0 {
 		return
 	}
 
-	err := service.DeleteProduct(product.ProductID, userID)
+	err := service.DeleteProduct(productID, userID)
 	if !common.HandleBusinessError(client, err) {
 		return
 	}
@@ -128,4 +129,18 @@ func ProductDetail(client *gin.Context) {
 	}
 
 	response.Success(client, "获取商品详情成功", product)
+}
+
+func GetMerchantProductList(client *gin.Context) {
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
+
+	products, err := service.GetMerchantProductList(userID)
+	if !common.HandleBusinessError(client, err) {
+		return
+	}
+
+	response.Success(client, "获取商品列表成功", products)
 }

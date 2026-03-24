@@ -5,6 +5,7 @@ import (
 	"github.com/Rezarit/go-seckill-system/pkg/response"
 	"github.com/gin-gonic/gin"
 	"log"
+	"strconv"
 )
 
 // BindRequest 绑定信息
@@ -15,4 +16,14 @@ func BindRequest(client *gin.Context, req interface{}) bool {
 		return false
 	}
 	return true
+}
+
+func ParamID(client *gin.Context, key string) int64 {
+	IDStr := client.Param(key)
+	ID, err := strconv.ParseInt(IDStr, 10, 64)
+	if err != nil {
+		response.Fail(client, domain.ErrCodeParamInvalid, "无效的"+key)
+		return 0
+	}
+	return ID
 }
