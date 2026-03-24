@@ -32,9 +32,10 @@ func InitRoute() *gin.Engine {
 		// 商户相关
 		roleMerchantRouter := protectedRouter.Group("/merchant")
 		roleMerchantRouter.Use(middleware.MerchantRequired())
-		roleMerchantRouter.POST("/product", api.CreatProduct)    //发布商品
-		roleMerchantRouter.PUT("/product", api.UpdateProduct)    //更新商品
-		roleMerchantRouter.DELETE("/product", api.DeleteProduct) //删除商品
+		roleMerchantRouter.POST("/product", api.CreatProduct)                //发布商品
+		roleMerchantRouter.PUT("/product/:product_id", api.UpdateProduct)    //更新商品
+		roleMerchantRouter.DELETE("/product/:product_id", api.DeleteProduct) //删除商品
+		roleMerchantRouter.GET("/product", api.GetMerchantProductList)       //获取商品列表
 
 		// 购物车相关
 		protectedRouter.POST("/cart/add/:product_id", api.AddToCart)       //加⼊购物⻋

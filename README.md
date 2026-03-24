@@ -114,5 +114,5 @@ type BusinessError struct {
 
 ## 后续优化
 - [x] Redis 集成
-- [ ] Docker 部署
+- [x] Docker 部署
 - [ ] MQ 消峰

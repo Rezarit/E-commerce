@@ -28,7 +28,6 @@ type ProductCreatRequest struct {
 }
 
 type ProductUpdateRequest struct {
-	ProductID   int64           `json:"product_id" binding:"required"`
 	ProductName string          `json:"product_name" binding:"required"`
 	Description string          `json:"description"`
 	Price       decimal.Decimal `json:"price" `
@@ -39,10 +38,6 @@ type ProductUpdateRequest struct {
 
 type ProductCreateResponse struct {
 	ProductID int64 `json:"product_id"`
-}
-
-type ProductDeleteRequest struct {
-	ProductID int64 `json:"product_id" binding:"required"`
 }
 
 type ProductSearchRequest struct {
