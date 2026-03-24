@@ -26,15 +26,17 @@ func MakeOrder(client *gin.Context) {
 	}
 
 	// 执行下单操作
-	orderID, err := service.MakeOrder(userID, req.Address)
+	err := service.MakeOrder(userID, req.Address)
 	if !common.HandleBusinessError(client, err) {
 		return
 	}
 
 	// 返回成功响应
-	response.Success(client, "下单成功", gin.H{
-		"order_id": orderID,
-	})
+	response.Success(client,
+		"下单请求已受理，正在排队处理中，请稍后查询结果",
+		gin.H{
+			"status": "processing",
+		})
 }
 
 // GetOrderList 获取订单列表
@@ -87,8 +89,10 @@ func GetOrderDetail(client *gin.Context) {
 	}
 
 	// 返回成功响应
-	response.Success(client, "获取订单详情成功", gin.H{
-		"order":       order,
-		"order_items": orderItems,
-	})
+	response.Success(client,
+		"获取订单详情成功",
+		gin.H{
+			"order":       order,
+			"order_items": orderItems,
+		})
 }

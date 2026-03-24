@@ -7,7 +7,7 @@ redis:
   addr: "localhost:6379"
   password: ""
   db: 0
-  pool_size: 500  # 优化高并发场景，增加到500个连接
+  pool_size: 500
 
 database:
   host: "127.0.0.1"
@@ -15,3 +15,9 @@ database:
   user: "root"
   password: "fzfz1314"
   dbname: "go_seckill_system"
+
+rabbitmq:
+  url: "amqp://guest:guest@localhost:5672/"
+  queues:
+    order: "order_queue"
+    cart: "cart_queue"

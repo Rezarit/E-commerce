@@ -26,6 +26,13 @@ func RemoveFromCart(userID, productID int64) error {
 	return nil
 }
 
+func ClearCart(userID int64) error {
+	if err := DB.Where("user_id = ?", userID).Delete(&domain.Cart{}).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
 // CheckCartItemExists 检查购物车商品是否存在
 func CheckCartItemExists(userID, productID int64) (bool, error) {
 	var count int64
