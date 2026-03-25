@@ -104,3 +104,4 @@ func InitService(redisClient *redis.Client) {
 
 	log.Println("[Service] 服务实例初始化成功")
 }
+

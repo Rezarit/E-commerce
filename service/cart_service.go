@@ -47,6 +47,7 @@ func RemoveFromCart(userID, productID int64) error {
 	log.Printf("[Service] 从购物车移除商品 | 用户ID：%d | 商品ID：%d", userID, productID)
 
 	err := cartService.RemoveFromCartRedis(userID, productID)
+
 	if err != nil {
 		log.Printf("[Service] 从购物车移除商品失败 | 用户ID：%d | 商品ID：%d | 错误：%v", userID, productID, err)
 		return &domain.BusinessError{
