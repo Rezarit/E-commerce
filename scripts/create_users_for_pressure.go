@@ -28,10 +28,10 @@ type UserRegisterResponse struct {
 
 func main() {
 	const (
-		baseURL      = "http://localhost:8080"
-		userCount    = 500  // 创建500个用户
-		workerCount  = 10   // 10个并发worker
-		password     = "12345678" // 统一密码
+		baseURL     = "http://82.157.177.158:8080"
+		userCount   = 500        // 创建500个用户
+		workerCount = 10         // 10个并发worker
+		password    = "12345678" // 统一密码
 	)
 
 	fmt.Println("🚀 开始创建压测用户...")
@@ -41,7 +41,7 @@ func main() {
 
 	// 创建用户通道
 	userChan := make(chan int, userCount)
-	
+
 	// 填充用户编号
 	for i := 1; i <= userCount; i++ {
 		userChan <- i
@@ -58,24 +58,24 @@ func main() {
 
 	// 启动worker并发创建用户
 	startTime := time.Now()
-	
+
 	for i := 0; i < workerCount; i++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			
+
 			client := &http.Client{
 				Timeout: 30 * time.Second,
 			}
 
 			for userNum := range userChan {
 				username := fmt.Sprintf("test%03d", userNum) // test001, test002, ..., test500
-				
+
 				if err := registerUser(client, baseURL, username, password); err != nil {
 					mu.Lock()
 					failureCount++
 					mu.Unlock()
-					
+
 					if failureCount <= 10 { // 只打印前10个错误
 						fmt.Printf("❌ Worker%d 创建用户%s失败: %v\n", workerID, username, err)
 					}
@@ -83,12 +83,12 @@ func main() {
 					mu.Lock()
 					successCount++
 					mu.Unlock()
-					
+
 					if successCount <= 10 { // 只打印前10个成功
 						fmt.Printf("✅ Worker%d 创建用户%s成功\n", workerID, username)
 					}
 				}
-				
+
 				// 短暂延迟，避免对系统造成过大压力
 				time.Sleep(50 * time.Millisecond)
 			}
@@ -106,17 +106,17 @@ func main() {
 	fmt.Printf("❌ 失败用户: %d\n", failureCount)
 	fmt.Printf("📈 成功率: %.2f%%\n", float64(successCount)/float64(userCount)*100)
 	fmt.Printf("🚀 创建速度: %.2f 用户/秒\n", float64(successCount)/totalDuration.Seconds())
-	
+
 	// 生成压测脚本可用的用户列表
 	fmt.Println("\n📋 压测用户列表（前20个）:")
 	for i := 1; i <= 20 && i <= userCount; i++ {
 		fmt.Printf("test%03d/12345678\n", i)
 	}
-	
+
 	if userCount > 20 {
 		fmt.Printf("... 还有 %d 个用户\n", userCount-20)
 	}
-	
+
 	fmt.Println("\n💡 提示: 这些用户可以直接用于压测脚本！")
 }
 

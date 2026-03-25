@@ -1,0 +1,20 @@
+name: Go秒杀项目自动部署
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 自动部署到腾讯云服务器
+        uses: appleboy/ssh-action@master
+        with:
+          host: 82.157.177.158
+          username: root
+          key: ${{ secrets.TXCLOUD }}
+          script: |
+            cd /root/go-seckill-system
+            git pull
+            docker-compose down
+            docker-compose up -d --build
