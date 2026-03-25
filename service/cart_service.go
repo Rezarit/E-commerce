@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/Rezarit/go-seckill-system/domain"
+	"gorm.io/gorm"
 	"log"
 )
 
@@ -59,7 +60,7 @@ func RemoveFromCart(userID, productID int64) error {
 }
 
 // processCartItem 处理单个购物车商品
-func processCartItem(orderID int64, cart domain.Cart) error {
+func processCartItem(tx *gorm.DB, orderID int64, cart domain.Cart) error {
 	// 获取商品信息
 	product, err := getProductInfo(cart.ProductID)
 	if err != nil {
@@ -72,12 +73,12 @@ func processCartItem(orderID int64, cart domain.Cart) error {
 	}
 
 	// 创建订单商品
-	if err = createOrderItem(orderID, cart, product); err != nil {
+	if err = createOrderItem(tx, orderID, cart, product); err != nil {
 		return err
 	}
 
 	// 扣减库存
-	if err = updateProductStock(product, cart.Quantity); err != nil {
+	if err = updateProductStock(tx, product, cart.Quantity); err != nil {
 		return err
 	}
 

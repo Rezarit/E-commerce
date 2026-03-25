@@ -58,10 +58,9 @@ type CartResponse struct {
 func main() {
 	const (
 		baseURL           = "http://localhost:8080"
-		duration          = 60 * time.Second
 		totalStock        = 10000000 // 增加到1000万库存，避免库存不足
-		operationsPerUser = 5000     // 每个用户执行5000次操作（极限！）
-		workerCount       = 500      // 增加到500个并发worker（极限！）
+		requestsPerWorker = 500      // 每个worker执行的操作次数
+		workerCount       = 50       // 100个并发worker
 	)
 
 	fmt.Println("🚀 压测模式：服务日志输出已关闭")
@@ -84,9 +83,12 @@ func main() {
 		}
 	}
 
+	totalRequestsToSend := workerCount * requestsPerWorker
 	fmt.Printf("🚀 开始基于真实用户流程的压测\n")
-	fmt.Printf("⏱️  测试时长: %v\n", duration)
-	fmt.Printf("👥 测试用户数: %d\n", len(testUsers))
+	fmt.Printf("   并发数 (Workers): %d\n", workerCount)
+	fmt.Printf("   每个Worker请求数: %d\n", requestsPerWorker)
+	fmt.Printf("   总请求数: %d\n", totalRequestsToSend)
+	fmt.Printf("   测试用户数: %d\n", len(testUsers))
 	fmt.Println("=====================================")
 
 	// 为每个用户获取access_token和用户ID
@@ -167,12 +169,11 @@ func main() {
 		startTime     time.Time
 	)
 
-	// 2. 创建请求通道和停止通道（增加通道容量）
-	requestChan := make(chan int, 10000) // 增加到10000，避免阻塞
-	stopChan := make(chan struct{})
+	// 2. 创建请求通道
+	requestChan := make(chan int, totalRequestsToSend)
 
-	// 3. 启动worker持续发送请求（高并发压测）
-	fmt.Printf("👥 启动 %d 个worker持续发送请求...\n", workerCount)
+	// 3. 启动worker
+	fmt.Printf("👥 启动 %d 个worker...\n", workerCount)
 
 	// 准备用户列表
 	usernames := make([]string, 0, len(userInfos))
@@ -194,105 +195,80 @@ func main() {
 			userInfo := userInfos[currentUser]
 			accessToken := userInfo.Token
 
-			// 交替执行：加入购物车 → 下单 → 加入购物车 → 下单
-			for i := 0; i < operationsPerUser; i++ {
-				select {
-				case <-stopChan:
-					return
-				case <-requestChan:
-					requestID := atomic.AddInt64(&totalRequests, 1)
+			// 从通道中获取请求，处理完所有请求后循环会自动结束
+			for range requestChan {
+				requestID := atomic.AddInt64(&totalRequests, 1)
 
-					// 第一步：加入购物车
-					err := addToCart(baseURL, accessToken, productID)
-					if err != nil {
-						if requestID <= 5 {
-							fmt.Printf("❌ 用户%s添加购物车失败[%d]: %v\n", currentUser, requestID, err)
-						}
-						atomic.AddInt64(&failureCount, 1)
-						continue
-					}
-
+				// 第一步：加入购物车
+				err := addToCart(baseURL, accessToken, productID)
+				if err != nil {
 					if requestID <= 5 {
-						fmt.Printf("✅ 用户%s添加购物车成功[%d]\n", currentUser, requestID)
+						fmt.Printf("❌ 用户%s添加购物车失败[%d]: %v\n", currentUser, requestID, err)
 					}
+					atomic.AddInt64(&failureCount, 1)
+					continue
+				}
 
-					// 短暂等待，确保购物车数据写入完成
-					time.Sleep(10 * time.Millisecond)
+				if requestID <= 5 {
+					fmt.Printf("✅ 用户%s添加购物车成功[%d]\n", currentUser, requestID)
+				}
 
-					// 第二步：下单
-					orderReq := OrderCreateRequest{
-						Address: fmt.Sprintf("测试地址%d", requestID),
+				// 短暂等待，确保购物车数据写入完成
+				time.Sleep(10 * time.Millisecond)
+
+				// 第二步：下单
+				orderReq := OrderCreateRequest{
+					Address: fmt.Sprintf("测试地址%d", requestID),
+				}
+
+				reqBody, _ := json.Marshal(orderReq)
+				req, _ := http.NewRequest("POST", baseURL+"/order/create", bytes.NewBuffer(reqBody))
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Authorization", "Bearer "+accessToken)
+
+				// 发送请求
+				resp, err := client.Do(req)
+				if err != nil {
+					if requestID <= 5 {
+						fmt.Printf("❌ 用户%s下单网络错误[%d]: %v\n", currentUser, requestID, err)
 					}
+					atomic.AddInt64(&failureCount, 1)
+					continue
+				}
 
-					reqBody, _ := json.Marshal(orderReq)
-					req, _ := http.NewRequest("POST", baseURL+"/order/create", bytes.NewBuffer(reqBody))
-					req.Header.Set("Content-Type", "application/json")
-					req.Header.Set("Authorization", "Bearer "+accessToken)
+				// 解析响应
+				body, _ := io.ReadAll(resp.Body)
+				var orderResp OrderResponse
+				json.Unmarshal(body, &orderResp)
+				resp.Body.Close()
 
-					// 发送请求
-					resp, err := client.Do(req)
-					if err != nil {
-						if requestID <= 5 {
-							fmt.Printf("❌ 用户%s下单网络错误[%d]: %v\n", currentUser, requestID, err)
-						}
-						atomic.AddInt64(&failureCount, 1)
-						continue
+				if resp.StatusCode == http.StatusOK && orderResp.Code == 10000 {
+					atomic.AddInt64(&successCount, 1)
+					if requestID <= 5 {
+						fmt.Printf("✅ 用户%s下单成功[%d]: 订单ID=%d\n", currentUser, requestID, orderResp.Data.OrderID)
 					}
-
-					// 解析响应
-					body, _ := io.ReadAll(resp.Body)
-					var orderResp OrderResponse
-					json.Unmarshal(body, &orderResp)
-					resp.Body.Close()
-
-					if resp.StatusCode == http.StatusOK && orderResp.Code == 10000 {
-						atomic.AddInt64(&successCount, 1)
-						if requestID <= 5 {
-							fmt.Printf("✅ 用户%s下单成功[%d]: 订单ID=%d\n", currentUser, requestID, orderResp.Data.OrderID)
-						}
-					} else {
-						atomic.AddInt64(&failureCount, 1)
-						if requestID <= 5 {
-							fmt.Printf("❌ 用户%s下单失败[%d]: HTTP=%d, Code=%d, Msg=%s\n",
-								currentUser, requestID, resp.StatusCode, orderResp.Code, orderResp.Msg)
-						}
+				} else {
+					atomic.AddInt64(&failureCount, 1)
+					if requestID <= 5 {
+						fmt.Printf("❌ 用户%s下单失败[%d]: HTTP=%d, Code=%d, Msg=%s\n",
+							currentUser, requestID, resp.StatusCode, orderResp.Code, orderResp.Msg)
 					}
 				}
 			}
 		}(i)
 	}
 
-	// 4. 开始压测计时
-	fmt.Printf("⏰ 开始 %v 压测...\n", duration)
+	// 4. 开始压测计时并填充请求
+	fmt.Println("⏰ 开始压测，填充请求通道...")
 	startTime = time.Now()
 
-	// 持续向通道发送请求（极限压测）
-	go func() {
-		ticker := time.NewTicker(10 * time.Microsecond) // 减少到10微秒，极限压测！
-		defer ticker.Stop()
+	// 将所有请求一次性放入通道
+	for i := 0; i < totalRequestsToSend; i++ {
+		requestChan <- 1
+	}
+	close(requestChan) // 关闭通道，worker处理完所有请求后将自动退出
 
-		for {
-			select {
-			case <-ticker.C:
-				// 一次性发送大量请求，极限压测
-				for i := 0; i < 200; i++ { // 增加到200个请求
-					select {
-					case requestChan <- 1:
-						// 成功发送请求
-					default:
-						// 通道满，跳过
-						break
-					}
-				}
-			case <-stopChan:
-				return
-			}
-		}
-	}()
-
-	// 5. 等待压测时间结束
-	time.Sleep(duration)
-	close(stopChan)
+	// 5. 等待所有worker完成
 	wg.Wait()
 
 	// 6. 统计结果
@@ -377,14 +353,16 @@ func loginWithID(baseURL, username, password string) (string, int64, error) {
 
 // 添加商品到购物车
 func addToCart(baseURL, accessToken string, productID int64) error {
-	// 你的路由是 /cart/add/:product_id，需要请求体包含quantity参数
-	cartReq := CartAddRequest{
-		Quantity: 1, // 默认添加1个商品
-	}
-
-	reqBody, _ := json.Marshal(cartReq)
+	// 路由是 /cart/add/:product_id，所以 product_id 在 URL 中
 	url := fmt.Sprintf("%s/cart/add/%d", baseURL, productID)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+
+	// 请求体只需要 quantity
+	reqBody, _ := json.Marshal(map[string]int{"quantity": 1})
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %v", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
@@ -395,12 +373,15 @@ func addToCart(baseURL, accessToken string, productID int64) error {
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %v", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("HTTP状态码错误: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
-	body, _ := io.ReadAll(resp.Body)
 	var cartResp CartResponse
 	if err := json.Unmarshal(body, &cartResp); err != nil {
 		return fmt.Errorf("响应解析失败: %v, 原始响应: %s", err, string(body))

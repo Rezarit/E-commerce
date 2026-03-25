@@ -4,20 +4,20 @@ jwt:
   refresh_token_expire_hour: 24
 
 redis:
-  addr: "localhost:6379"
+  addr: "redis:6379"
   password: ""
   db: 0
   pool_size: 500
 
 database:
-  host: "127.0.0.1"
+  host: "mysql"
   port: 3306
   user: "root"
   password: "fzfz1314"
   dbname: "go_seckill_system"
 
 rabbitmq:
-  url: "amqp://guest:guest@localhost:5672/"
+  url: "amqp://guest:guest@rabbitmq:5672/"
   queues:
     order: "order_queue"
     cart: "cart_queue"

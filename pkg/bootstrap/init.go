@@ -56,12 +56,14 @@ func initMQ() error {
 	}
 
 	log.Println("[Bootstrap] MQ初始化成功")
+	return nil
+}
 
+func initConsumer() {
 	consumers.InitOrderConsumer()
 	log.Println("[Bootstrap] 订单消费者已启动，在后台等待处理任务...")
 	consumers.InitCartConsumer()
 	log.Println("[Bootstrap] 购物车消费者已启动，在后台等待处理任务...")
-	return nil
 }
 
 func initAllProductStock() error {
@@ -97,6 +99,7 @@ func Init() error {
 		return err
 	} // 脚本业务服务初始化
 	service.InitService(redis.GetClient()) // 非脚本业务服务初始化
+	initConsumer()                         // 初始化消费者
 
 	// 缓存预热
 	if err := initAllProductStock(); err != nil {

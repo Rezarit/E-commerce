@@ -1,15 +1,18 @@
 package dao
 
-import "github.com/Rezarit/go-seckill-system/domain"
+import (
+	"github.com/Rezarit/go-seckill-system/domain"
+	"gorm.io/gorm"
+)
 
 // CreateOrder 创建订单
-func CreateOrder(order *domain.Order) error {
-	return InsertRecord(order)
+func CreateOrder(tx *gorm.DB, order *domain.Order) error {
+	return InsertRecord(order, tx)
 }
 
 // CreateOrderItem 创建订单商品
-func CreateOrderItem(orderItem *domain.OrderItem) error {
-	return InsertRecord(orderItem)
+func CreateOrderItem(tx *gorm.DB, orderItem *domain.OrderItem) error {
+	return InsertRecord(orderItem, tx)
 }
 
 // GetOrdersByUserID 获取用户订单列表
