@@ -1,9 +1,9 @@
 package main
 
 import (
+	"github.com/Rezarit/go-seckill-system/internal/route"
 	"github.com/Rezarit/go-seckill-system/pkg/bootstrap"
 	"github.com/Rezarit/go-seckill-system/pkg/rabbitmq"
-	"github.com/Rezarit/go-seckill-system/route"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
 )

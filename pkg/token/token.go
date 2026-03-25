@@ -2,7 +2,7 @@ package token
 
 import (
 	"errors"
-	"github.com/Rezarit/go-seckill-system/domain"
+	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
 	"github.com/Rezarit/go-seckill-system/pkg/config"
 	"github.com/dgrijalva/jwt-go"
 	"log"
@@ -38,7 +38,7 @@ func ParseToken(tokenStr string, claims jwt.Claims) error {
 		if errors.As(err, &ve) {
 			switch {
 			case ve.Errors&jwt.ValidationErrorExpired != 0:
-				return domain.ErrTokenExpired // 过期
+				return domain2.ErrTokenExpired // 过期
 			case ve.Errors&jwt.ValidationErrorSignatureInvalid != 0:
 				return jwt.ErrSignatureInvalid // 签名无效
 			}
@@ -48,16 +48,16 @@ func ParseToken(tokenStr string, claims jwt.Claims) error {
 
 	// 验证 Token 整体有效性
 	if !token.Valid {
-		return domain.ErrTokenInvalid
+		return domain2.ErrTokenInvalid
 	}
 
 	return nil
 }
 
-func ValidateRefreshToken(claims *domain.RefreshTokenClaims) error {
+func ValidateRefreshToken(claims *domain2.RefreshTokenClaims) error {
 	nowUnix := time.Now().Unix()
 	if claims.ExpiresAt < nowUnix {
-		return domain.ErrTokenExpired
+		return domain2.ErrTokenExpired
 	}
 	return nil
 }

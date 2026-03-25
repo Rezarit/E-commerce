@@ -1,12 +1,12 @@
 package bootstrap
 
 import (
-	"github.com/Rezarit/go-seckill-system/dao"
+	"github.com/Rezarit/go-seckill-system/internal/dao"
+	service2 "github.com/Rezarit/go-seckill-system/internal/service"
+	consumers2 "github.com/Rezarit/go-seckill-system/internal/service/consumers"
 	"github.com/Rezarit/go-seckill-system/pkg/config"
 	"github.com/Rezarit/go-seckill-system/pkg/rabbitmq"
 	"github.com/Rezarit/go-seckill-system/pkg/redis"
-	"github.com/Rezarit/go-seckill-system/service"
-	"github.com/Rezarit/go-seckill-system/service/consumers"
 	"log"
 )
 
@@ -60,15 +60,15 @@ func initMQ() error {
 }
 
 func initConsumer() {
-	consumers.InitOrderConsumer()
+	consumers2.InitOrderConsumer()
 	log.Println("[Bootstrap] 订单消费者已启动，在后台等待处理任务...")
-	consumers.InitCartConsumer()
+	consumers2.InitCartConsumer()
 	log.Println("[Bootstrap] 购物车消费者已启动，在后台等待处理任务...")
 }
 
 func initAllProductStock() error {
 	log.Println("[Bootstrap] 开始初始化商品库存...")
-	err := service.InitAllProductStock()
+	err := service2.InitAllProductStock()
 	if err != nil {
 		log.Printf("[Bootstrap] 商品库存初始化失败: %v", err)
 		return err
@@ -95,11 +95,11 @@ func Init() error {
 	}
 
 	// 业务服务初始化
-	if err := service.LoadLuaScripts(); err != nil {
+	if err := service2.LoadLuaScripts(); err != nil {
 		return err
 	} // 脚本业务服务初始化
-	service.InitService(redis.GetClient()) // 非脚本业务服务初始化
-	initConsumer()                         // 初始化消费者
+	service2.InitService(redis.GetClient()) // 非脚本业务服务初始化
+	initConsumer()                          // 初始化消费者
 
 	// 缓存预热
 	if err := initAllProductStock(); err != nil {
