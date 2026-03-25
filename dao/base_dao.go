@@ -2,13 +2,23 @@ package dao
 
 import (
 	"fmt"
+	"gorm.io/gorm"
 	"log"
 )
 
 // InsertRecord 通用插入函数
-func InsertRecord[T any](record *T) error {
-	log.Printf("[DAO] 开始通用插入操作 | 类型：%T", record)
-	if err := DB.Create(record).Error; err != nil {
+func InsertRecord[T any](record *T, txs ...*gorm.DB) error {
+	var db *gorm.DB
+
+	if len(txs) > 0 && txs[0] != nil {
+		db = txs[0]
+		log.Printf("[DAO-TX] 开始通用事务插入操作 | 类型：%T", record)
+	} else {
+		db = DB
+		log.Printf("[DAO] 开始通用插入操作 | 类型：%T", record)
+	}
+
+	if err := db.Create(record).Error; err != nil {
 		log.Printf("[DAO] 通用插入操作失败 | 类型：%T | 错误：%v", record, err)
 		return err
 	}

@@ -52,11 +52,11 @@ func InitConsumer(name string, handler service.MessageHandler) {
 				}
 			} else {
 				// 处理失败，发送 Nack
-				err = d.Nack(false, true)
+				err = d.Nack(false, false)
 				if err != nil {
 					log.Printf("手动发送 Nack 失败: %v", err)
 				} else {
-					log.Printf("[%s] 消息处理失败: %v，已发送 Nack 并请求重入队列", q, err)
+					log.Printf("[%s] 消息处理失败: %v，已发送 Nack，消息将被丢弃或死信", q, err)
 				}
 			}
 		}

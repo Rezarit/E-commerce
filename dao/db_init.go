@@ -2,7 +2,6 @@ package dao
 
 import (
 	"fmt"
-	"github.com/Rezarit/go-seckill-system/domain"
 	"github.com/Rezarit/go-seckill-system/pkg/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -27,10 +26,24 @@ func InitDatabase() error {
 
 	// 初始化 GORM 连接
 	var err error
-	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger:                 logger.Default.LogMode(logger.Info),
-		SkipDefaultTransaction: true,
-	})
+	maxRetries := 10 // 最多重试10次
+	for i := 0; i < maxRetries; i++ {
+		// 初始化 GORM 连接
+		DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+			Logger:                 logger.Default.LogMode(logger.Info),
+			SkipDefaultTransaction: true,
+		})
+
+		if err == nil {
+			break
+		}
+
+		log.Printf("[数据库] 连接数据库失败，第 %d 次重试... 错误: %v", i+1, err)
+		// 等待5秒再重试
+		time.Sleep(5 * time.Second)
+	}
+
+	// 重试10次失败，放弃
 	if err != nil {
 		log.Printf("[数据库] 初始化数据库连接失败: %v", err)
 		return err
@@ -42,28 +55,30 @@ func InitDatabase() error {
 	if err != nil {
 		return err
 	}
-	// 连接池配置（优化高并发场景）
-	sqlDB.SetMaxOpenConns(500)              // 最大打开连接数：增加到500
-	sqlDB.SetMaxIdleConns(200)              // 最大空闲连接数：增加到200
+	// 连接池配置
+	sqlDB.SetMaxOpenConns(500)                 // 最大打开连接数
+	sqlDB.SetMaxIdleConns(200)                 // 最大空闲连接数
 	sqlDB.SetConnMaxLifetime(30 * time.Minute) // 连接存活时间
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute) // 连接空闲超时
 
 	// 自动迁移表
-	log.Println("[数据库] 开始自动迁移数据库表...")
-	err = DB.AutoMigrate(
-		&domain.User{},
-		&domain.Merchant{},
-		&domain.MerchantApplication{},
-		&domain.Product{},
-		&domain.Cart{},
-		&domain.Order{},
-		&domain.OrderItem{},
-	)
-	if err != nil {
-		log.Printf("[数据库] 自动迁移数据库表失败: %v", err)
-		return err
-	}
-	log.Println("[数据库] 数据库表自动迁移成功")
+	/*
+		log.Println("[数据库] 开始自动迁移数据库表...")
+		err = DB.AutoMigrate(
+			&domain.User{},
+			&domain.Merchant{},
+			&domain.MerchantApplication{},
+			&domain.Product{},
+			&domain.Cart{},
+			&domain.Order{},
+			&domain.OrderItem{},
+		)
+		if err != nil {
+			log.Printf("[数据库] 自动迁移数据库表失败: %v", err)
+			return err
+		}
+		log.Println("[数据库] 数据库表自动迁移成功")
+	*/
 
 	return nil
 }

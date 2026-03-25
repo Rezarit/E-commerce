@@ -4,6 +4,7 @@ import (
 	"github.com/Rezarit/go-seckill-system/dao"
 	"github.com/Rezarit/go-seckill-system/domain"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 	"log"
 )
 
@@ -45,18 +46,31 @@ func GetCartItems(userID int64) ([]domain.Cart, error) {
 
 // ExecuteOrderCreation 创建订单
 func ExecuteOrderCreation(userID int64, address string, carts []domain.Cart) (int64, error) {
-	// 计算订单总金额
-	total := calculateTotalAmount(carts)
+	// 开启事务
+	tx := dao.DB.Begin()
+	if tx.Error != nil {
+		log.Printf("[Service] 开启事务失败: %v", tx.Error)
+		return 0, &domain.BusinessError{Code: domain.ErrCodeDBError, Msg: "无法处理订单"}
+	}
+
+	// 确保事务会被处理
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			log.Printf("[Service] 事务处理中发生 Panic: %v", r)
+		}
+	}()
 
 	// 创建订单
 	order := domain.Order{
 		UserID:  userID,
 		Address: address,
-		Total:   total,
+		Total:   calculateTotalAmount(carts),
 	}
 
-	if err := dao.CreateOrder(&order); err != nil {
+	if err := dao.CreateOrder(tx, &order); err != nil {
 		log.Printf("[Service] 创建订单失败 | 用户ID：%d | 错误：%v", userID, err)
+		tx.Rollback()
 		return 0, &domain.BusinessError{
 			Code: domain.ErrCodeDBError,
 			Msg:  "创建订单失败",
@@ -64,10 +78,18 @@ func ExecuteOrderCreation(userID int64, address string, carts []domain.Cart) (in
 	}
 
 	// 创建订单商品并处理库存
-	if err := createOrderItemsAndUpdateStock(order.OrderID, carts); err != nil {
+	if err := createOrderItemsAndUpdateStock(tx, order.OrderID, carts); err != nil {
+		tx.Rollback()
 		return 0, err
 	}
 
+	if err := tx.Commit().Error; err != nil {
+		log.Printf("[Service] 提交事务失败: %v", err)
+		tx.Rollback()
+		return 0, &domain.BusinessError{Code: domain.ErrCodeDBError, Msg: "订单最终提交失败"}
+	}
+
+	log.Printf("[Service] 订单 %d 创建成功，事务已提交", order.OrderID)
 	return order.OrderID, nil
 }
 
@@ -105,9 +127,9 @@ func calculateTotalAmount(carts []domain.Cart) decimal.Decimal {
 }
 
 // createOrderItemsAndUpdateStock 创建订单商品并更新库存
-func createOrderItemsAndUpdateStock(orderID int64, carts []domain.Cart) error {
+func createOrderItemsAndUpdateStock(tx *gorm.DB, orderID int64, carts []domain.Cart) error {
 	for _, cart := range carts {
-		if err := processCartItem(orderID, cart); err != nil {
+		if err := processCartItem(tx, orderID, cart); err != nil {
 			return err
 		}
 	}
@@ -140,7 +162,7 @@ func checkStock(product *domain.Product, quantity int) error {
 }
 
 // createOrderItem 创建订单商品
-func createOrderItem(orderID int64, cart domain.Cart, product *domain.Product) error {
+func createOrderItem(tx *gorm.DB, orderID int64, cart domain.Cart, product *domain.Product) error {
 	orderItem := domain.OrderItem{
 		OrderID:     orderID,
 		ProductID:   cart.ProductID,
@@ -149,7 +171,7 @@ func createOrderItem(orderID int64, cart domain.Cart, product *domain.Product) e
 		Price:       product.Price,
 	}
 
-	if err := dao.CreateOrderItem(&orderItem); err != nil {
+	if err := dao.CreateOrderItem(tx, &orderItem); err != nil {
 		log.Printf("[Service] 创建订单商品失败 | 订单ID：%d | 商品ID：%d | 错误：%v", orderID, cart.ProductID, err)
 		return &domain.BusinessError{
 			Code: domain.ErrCodeDBError,
@@ -160,10 +182,19 @@ func createOrderItem(orderID int64, cart domain.Cart, product *domain.Product) e
 }
 
 // updateProductStock 更新商品库存
-func updateProductStock(product *domain.Product, quantity int) error {
+func updateProductStock(tx *gorm.DB, product *domain.Product, quantity int) error {
 	newStock, err := stockDeductService.DeductStock(product.ProductID, quantity)
 	if err != nil {
-		log.Printf("扣减库存失败: %v", err)
+		log.Printf("redis扣减库存失败: %v", err)
+		return &domain.BusinessError{
+			Code: domain.ErrCodeDBError,
+			Msg:  "更新商品库存失败",
+		}
+	}
+	// 更新数据库中的库存
+	product.Stock = newStock
+	if err = dao.DeductStock(tx, product.ProductID, quantity); err != nil {
+		log.Printf("数据库更新库存失败: %v", err)
 		return &domain.BusinessError{
 			Code: domain.ErrCodeDBError,
 			Msg:  "更新商品库存失败",

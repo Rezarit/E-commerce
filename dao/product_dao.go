@@ -1,7 +1,9 @@
 package dao
 
 import (
+	"errors"
 	"github.com/Rezarit/go-seckill-system/domain"
+	"gorm.io/gorm"
 )
 
 // CheckProductNameExists 商品名是否存在
@@ -83,4 +85,20 @@ func GetMerchantIDByUserID(userID int64) (int64, error) {
 		return 0, err
 	}
 	return merchant.MerchantID, nil
+}
+
+// DeductStock 扣减商品库存
+func DeductStock(tx *gorm.DB, productID int64, quantity int) error {
+	result := tx.Model(&domain.Product{}).
+		Where("product_id = ? AND stock >= ?", productID, quantity).
+		Update("stock", gorm.Expr("stock - ?", quantity))
+
+	// 检查是否有行受到影响
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("stock not enough")
+	}
+	return nil
 }
