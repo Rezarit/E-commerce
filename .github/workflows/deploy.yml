@@ -12,7 +12,7 @@ jobs:
         with:
           host: 82.157.177.158
           username: root
-          key: ${{ secrets.TXCLOUD }}
+          private_key: ${{ secrets.TXCLOUD }}
           script: |
             cd /root/go-seckill-system
             git pull
