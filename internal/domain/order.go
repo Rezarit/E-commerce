@@ -1,8 +1,9 @@
 package domain
 
 import (
-	"github.com/shopspring/decimal"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // 订单状态常量

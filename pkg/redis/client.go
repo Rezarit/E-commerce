@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/Rezarit/go-seckill-system/pkg/config"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"github.com/go-redis/redis/v8"
-	"log"
 )
 
 var client *redis.Client
@@ -25,7 +25,7 @@ func InitRedis(cfg *config.RedisConfig) error {
 		return fmt.Errorf("redis连接失败: %v", err)
 	}
 
-	log.Printf("redis连接成功: %s", cfg.Addr)
+	logger.Sugar.Infof("redis连接成功: %s", cfg.Addr)
 	return nil
 }
 

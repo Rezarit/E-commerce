@@ -43,12 +43,12 @@ func ShowCart(client *gin.Context) {
 		return
 	}
 
-	carts, err := service.ShowCart(userID)
+	items, err := service.GetCartItems(userID)
 	if !common2.HandleBusinessError(client, err) {
 		return
 	}
 
-	response.Success(client, "获取购物车成功", carts)
+	response.Success(client, "获取购物车成功", items)
 }
 
 // RemoveCart 从购物车移除商品

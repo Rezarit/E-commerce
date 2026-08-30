@@ -31,7 +31,7 @@ services:
       MYSQL_ROOT_PASSWORD: "fzfz1314"
       MYSQL_DATABASE: "go_seckill_system"
     ports:
-      - "3306:3306"
+      - "3307:3306" # 宿主机3307映射到容器3306，避免与本机MySQL冲突
     volumes:
       - mysql-data:/var/lib/mysql # 数据库数据持久化，防止容器删除后数据丢失
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql # 启动时自动执行这个 SQL 文件来建表

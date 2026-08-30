@@ -3,9 +3,9 @@ package service
 import (
 	dao2 "github.com/Rezarit/go-seckill-system/internal/dao"
 	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"github.com/Rezarit/go-seckill-system/pkg/redis"
 	"github.com/Rezarit/go-seckill-system/pkg/validator"
-	"log"
 )
 
 // CreatProduct 添加商品
@@ -22,7 +22,7 @@ func CreatProduct(product domain2.ProductCreatRequest, userID int64) (int64, err
 	// 获取商户ID
 	merchant, err := dao2.GetMerchantByUserID(userID)
 	if err != nil {
-		log.Printf("[Service] 查询商户信息失败 | 用户ID：%d | 错误：%v", userID, err)
+		logger.Sugar.Errorf("[Service] 查询商户信息失败 | 用户ID：%d | 错误：%v", userID, err)
 		return 0, &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "查询商户信息失败"}
 	}
 	// 整合商品信息
@@ -37,12 +37,12 @@ func CreatProduct(product domain2.ProductCreatRequest, userID int64) (int64, err
 	}
 
 	// 插入商品相关数据
-	log.Printf("[Service] 开始添加商品 | 商品名：%s", product.ProductName)
+	logger.Sugar.Infof("[Service] 开始添加商品 | 商品名：%s", product.ProductName)
 	if err = dao2.InsertProduct(&productToInsert); err != nil {
-		log.Printf("[Service] 添加商品失败 | 商品名：%s | 错误：%v", product.ProductName, err)
+		logger.Sugar.Errorf("[Service] 添加商品失败 | 商品名：%s | 错误：%v", product.ProductName, err)
 		return 0, &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "添加商品失败"}
 	}
-	log.Printf("[Service] 添加商品成功 | 商品名：%s", product.ProductName)
+	logger.Sugar.Infof("[Service] 添加商品成功 | 商品名：%s", product.ProductName)
 	return productToInsert.ProductID, nil
 }
 
@@ -50,11 +50,11 @@ func CreatProduct(product domain2.ProductCreatRequest, userID int64) (int64, err
 func CheckProductName(productName string) error {
 	trimmedName, err := validator.TrimAndCheckEmpty(productName, "商品名")
 	if err != nil {
-		log.Printf("[Service] 商品名不能为空 | 商品名：%s | 错误：%v", productName, err)
+		logger.Sugar.Errorf("[Service] 商品名不能为空 | 商品名：%s | 错误：%v", productName, err)
 		return &domain2.BusinessError{Code: domain2.ErrCodeParamInvalid, Msg: err.Error()}
 	}
 	if err = validator.CheckLengthRange(trimmedName, "商品名", 1, 200); err != nil {
-		log.Printf("[Service] 商品名长度需在1-200字节之间 | 商品名：%s | 错误：%v", productName, err)
+		logger.Sugar.Errorf("[Service] 商品名长度需在1-200字节之间 | 商品名：%s | 错误：%v", productName, err)
 		return &domain2.BusinessError{Code: domain2.ErrCodeParamInvalid, Msg: err.Error()}
 	}
 	return nil
@@ -65,11 +65,11 @@ func CheckProductNameExists(productName string) error {
 	//查询商品名是否存在
 	exists, err := dao2.CheckProductNameExists(productName)
 	if err != nil {
-		log.Printf("[Service] 检查商品名是否存在失败 | 商品名：%s | 错误：%v", productName, err)
+		logger.Sugar.Errorf("[Service] 检查商品名是否存在失败 | 商品名：%s | 错误：%v", productName, err)
 		return &domain2.BusinessError{Code: domain2.ErrCodeParamInvalid, Msg: err.Error()}
 	}
 	if exists {
-		log.Printf("[Service] 商品名已存在 | 商品名：%s", productName)
+		logger.Sugar.Infof("[Service] 商品名已存在 | 商品名：%s", productName)
 		return &domain2.BusinessError{Code: domain2.ErrCodeProductExists, Msg: "商品名已存在"}
 	}
 	return nil
@@ -96,12 +96,12 @@ func UpdateProduct(productID int64, product domain2.ProductUpdateRequest, userID
 	}
 
 	// 更新商品相关数据
-	log.Printf("[Service] 开始更新商品 | 商品ID：%d", productID)
+	logger.Sugar.Infof("[Service] 开始更新商品 | 商品ID：%d", productID)
 	if err := dao2.UpdateProduct(&productToUpdate); err != nil {
-		log.Printf("[Service] 更新商品失败 | 商品ID：%d | 错误：%v", productID, err)
+		logger.Sugar.Errorf("[Service] 更新商品失败 | 商品ID：%d | 错误：%v", productID, err)
 		return &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "更新商品失败"}
 	}
-	log.Printf("[Service] 更新商品成功 | 商品ID：%d", productID)
+	logger.Sugar.Infof("[Service] 更新商品成功 | 商品ID：%d", productID)
 	return nil
 }
 
@@ -113,21 +113,21 @@ func DeleteProduct(productID int64, userID int64) error {
 	}
 
 	// 删除商品相关数据
-	log.Printf("[Service] 开始删除商品 | 商品ID：%d | 商户ID：%d", productID, userID)
+	logger.Sugar.Infof("[Service] 开始删除商品 | 商品ID：%d | 商户ID：%d", productID, userID)
 	if err := dao2.DeleteProduct(productID); err != nil {
-		log.Printf("[Service] 删除商品失败 | 商品ID：%d | 错误：%v", productID, err)
+		logger.Sugar.Errorf("[Service] 删除商品失败 | 商品ID：%d | 错误：%v", productID, err)
 		return &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "删除商品失败"}
 	}
-	log.Printf("[Service] 删除商品成功 | 商品ID：%d", productID)
+	logger.Sugar.Infof("[Service] 删除商品成功 | 商品ID：%d", productID)
 	return nil
 }
 
 // CheckProductOwnership 检查商品归属权
 func CheckProductOwnership(productID int64, userID int64) error {
-	log.Printf("[Service] 开始检查商品归属权 | 商品ID：%d | 用户ID：%d", productID, userID)
+	logger.Sugar.Infof("[Service] 开始检查商品归属权 | 商品ID：%d | 用户ID：%d", productID, userID)
 	product, err := dao2.GetProductByID(productID)
 	if err != nil {
-		log.Printf("[Service] 查询商品失败 | 商品ID：%d | 错误：%v", productID, err)
+		logger.Sugar.Errorf("[Service] 查询商品失败 | 商品ID：%d | 错误：%v", productID, err)
 		return &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "查询商品失败"}
 	}
 
@@ -137,34 +137,34 @@ func CheckProductOwnership(productID int64, userID int64) error {
 	}
 
 	if product.MerchantID != merchant.MerchantID {
-		log.Printf("[Service] 商品归属权错误 | 商品ID：%d | 商户ID：%d | 操作商户：%d", productID, product.MerchantID, merchant.MerchantID)
+		logger.Sugar.Errorf("[Service] 商品归属权错误 | 商品ID：%d | 商户ID：%d | 操作商户：%d", productID, product.MerchantID, merchant.MerchantID)
 		return &domain2.BusinessError{
 			Code: domain2.ErrCodePermissionDenied,
 			Msg:  "无权操作此商品",
 		}
 	}
-	log.Printf("[Service] 商品归属权验证成功 | 商品ID：%d | 用户ID：%d", productID, userID)
+	logger.Sugar.Infof("[Service] 商品归属权验证成功 | 商品ID：%d | 用户ID：%d", productID, userID)
 	return nil
 }
 
 // GetProductList 获取商品列表
 func GetProductList() ([]domain2.Product, error) {
-	log.Printf("[Service] 开始获取商品列表")
+	logger.Sugar.Infof("[Service] 开始获取商品列表")
 	products, err := dao2.GetProductList()
 	if err != nil {
-		log.Printf("[Service] 获取商品列表失败 | 错误：%v", err)
+		logger.Sugar.Errorf("[Service] 获取商品列表失败 | 错误：%v", err)
 		return nil, &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "获取商品列表失败"}
 	}
-	log.Printf("[Service] 获取商品列表成功 | 商品数量：%d", len(products))
+	logger.Sugar.Infof("[Service] 获取商品列表成功 | 商品数量：%d", len(products))
 	return products, nil
 }
 
 // SearchProduct 搜索商品
 func SearchProduct(keyword string) ([]domain2.ProductSearchResponse, error) {
-	log.Printf("[Service] 开始搜索商品 | 关键词：%s", keyword)
+	logger.Sugar.Infof("[Service] 开始搜索商品 | 关键词：%s", keyword)
 	products, err := dao2.SearchProduct(keyword)
 	if err != nil {
-		log.Printf("[Service] 搜索商品失败 | 关键词：%s | 错误：%v", keyword, err)
+		logger.Sugar.Errorf("[Service] 搜索商品失败 | 关键词：%s | 错误：%v", keyword, err)
 		return nil, &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "搜索商品失败"}
 	}
 
@@ -179,7 +179,7 @@ func SearchProduct(keyword string) ([]domain2.ProductSearchResponse, error) {
 		})
 	}
 
-	log.Printf("[Service] 搜索商品成功 | 关键词：%s | 商品数量：%d", keyword, len(products))
+	logger.Sugar.Infof("[Service] 搜索商品成功 | 关键词：%s | 商品数量：%d", keyword, len(products))
 	return resp, nil
 }
 
@@ -188,14 +188,14 @@ func GetProductDetail(productID int64) (*domain2.Product, error) {
 	// 从缓存获取商品详情
 	product, err := cacheService.GetProductFromCache(productID)
 	if err == nil {
-		log.Printf("[Service] 从缓存获取商品详情成功 | 商品ID：%d", productID)
+		logger.Sugar.Infof("[Service] 从缓存获取商品详情成功 | 商品ID：%d", productID)
 		return product, nil
 	}
 
 	// 缓存未命中，从数据库获取
 	product, err = dao2.GetProductByID(productID)
 	if err != nil {
-		log.Printf("[Service] 获取商品详情失败 | 商品ID：%d | 错误：%v", productID, err)
+		logger.Sugar.Errorf("[Service] 获取商品详情失败 | 商品ID：%d | 错误：%v", productID, err)
 		return nil, &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "获取商品详情失败",
@@ -205,23 +205,23 @@ func GetProductDetail(productID int64) (*domain2.Product, error) {
 	// 缓存商品详情
 	go func() {
 		if cacheErr := cacheService.CacheProduct(product, redis.DefaultProductCacheTTL); cacheErr != nil {
-			log.Printf("[Service] 异步缓存商品详情失败 | 商品ID：%d | 错误：%v", productID, cacheErr)
+			logger.Sugar.Errorf("[Service] 异步缓存商品详情失败 | 商品ID：%d | 错误：%v", productID, cacheErr)
 		}
 	}()
 
-	log.Printf("[Service] 获取商品详情成功 | 商品ID：%d", productID)
+	logger.Sugar.Infof("[Service] 获取商品详情成功 | 商品ID：%d", productID)
 	return product, nil
 }
 
 func GetMerchantProductList(userID int64) ([]domain2.Product, error) {
-	log.Printf("[Service] 开始获取商户商品列表 | 用户ID：%d", userID)
+	logger.Sugar.Infof("[Service] 开始获取商户商品列表 | 用户ID：%d", userID)
 	merchantID, err := dao2.GetMerchantIDByUserID(userID)
 
 	products, err := dao2.GetProductListByMerchantID(merchantID)
 	if err != nil {
-		log.Printf("[Service] 获取商户商品列表失败 | 商户ID：%d | 错误：%v", merchantID, err)
+		logger.Sugar.Errorf("[Service] 获取商户商品列表失败 | 商户ID：%d | 错误：%v", merchantID, err)
 		return nil, &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "获取商户商品列表失败"}
 	}
-	log.Printf("[Service] 获取商户商品列表成功 | 商户ID：%d | 商品数量：%d", merchantID, len(products))
+	logger.Sugar.Infof("[Service] 获取商户商品列表成功 | 商户ID：%d | 商品数量：%d", merchantID, len(products))
 	return products, nil
 }

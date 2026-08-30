@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
-	myredis "github.com/Rezarit/go-seckill-system/pkg/redis"
-	"github.com/go-redis/redis/v8"
-	"log"
 	"strconv"
 	"time"
+
+	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
+	myredis "github.com/Rezarit/go-seckill-system/pkg/redis"
+	"github.com/go-redis/redis/v8"
 )
 
 // OrderResult 订单结果
@@ -150,10 +151,10 @@ func InitAllProductStock() error {
 
 	// 使用批量缓存函数
 	if err = cacheService.BatchCacheProductStocks(stocks, myredis.DefaultSessionTTL); err != nil {
-		log.Printf("[Service] 批量预热商品库存失败: %v", err)
+		logger.Sugar.Errorf("[Service] 批量预热商品库存失败: %v", err)
 		return err
 	}
-	log.Printf("商品库存预热完成 | 商品数量: %d", len(products))
+	logger.Sugar.Infof("商品库存预热完成 | 商品数量: %d", len(products))
 	return nil
 }
 
@@ -165,7 +166,7 @@ func (s *CartService) AddToCartRedis(userID, productID int64, quantity int) erro
 	// 执行预加载的Lua脚本
 	result, err := s.luaScript.Run(ctx, s.client, []string{key}, productID, quantity).Result()
 	if err != nil {
-		log.Printf("[RedisService] 加入购物车失败 | 用户ID: %d | 商品ID: %d | 错误: %v", userID, productID, err)
+		logger.Sugar.Errorf("[RedisService] 加入购物车失败 | 用户ID: %d | 商品ID: %d | 错误: %v", userID, productID, err)
 		return &domain2.BusinessError{
 			Code: domain2.ErrCodeCacheError,
 			Msg:  "加入购物车失败: " + err.Error(),
@@ -174,7 +175,7 @@ func (s *CartService) AddToCartRedis(userID, productID int64, quantity int) erro
 
 	// 处理Lua脚本返回结果
 	if errMsg, ok := result.(string); ok && errMsg != "" {
-		log.Printf("[RedisService] Lua脚本返回错误: %s", errMsg)
+		logger.Sugar.Errorf("[RedisService] Lua脚本返回错误: %s", errMsg)
 		return &domain2.BusinessError{
 			Code: domain2.ErrCodeParamInvalid,
 			Msg:  errMsg,
@@ -182,19 +183,19 @@ func (s *CartService) AddToCartRedis(userID, productID int64, quantity int) erro
 	}
 
 	newQuantity, _ := result.(int64)
-	log.Printf("[RedisService] 加入购物车成功 | 用户ID: %d | 商品ID: %d | 新数量: %d", userID, productID, newQuantity)
+	logger.Sugar.Infof("[RedisService] 加入购物车成功 | 用户ID: %d | 商品ID: %d | 新数量: %d", userID, productID, newQuantity)
 	return nil
 }
 
 // GetCartRedis 获取Redis购物车内容
-func (s *CartService) GetCartRedis(userID int64) ([]domain2.Cart, error) {
+func (s *CartService) GetCartRedis(userID int64) ([]domain2.CartItem, error) {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyCart, userID)
 
 	// 获取购物车所有商品
 	result, err := s.client.HGetAll(ctx, key).Result()
 	if err != nil {
-		log.Printf("[RedisService] 获取购物车失败 | 用户ID: %d | 错误: %v", userID, err)
+		logger.Sugar.Errorf("[RedisService] 获取购物车失败 | 用户ID: %d | 错误: %v", userID, err)
 		return nil, &domain2.BusinessError{
 			Code: domain2.ErrCodeCacheError,
 			Msg:  "获取购物车失败: " + err.Error(),
@@ -203,28 +204,74 @@ func (s *CartService) GetCartRedis(userID int64) ([]domain2.Cart, error) {
 
 	// 如果购物车为空
 	if len(result) == 0 {
-		log.Printf("[RedisService] 购物车为空 | 用户ID: %d", userID)
-		return []domain2.Cart{}, nil
+		logger.Sugar.Infof("[RedisService] 购物车为空 | 用户ID: %d", userID)
+		return []domain2.CartItem{}, nil
 	}
 
 	// 转换Redis Hash到Cart结构
-	var carts []domain2.Cart
+	var items []domain2.CartItem
 	for productIDStr, quantityStr := range result {
 		productID, quantity, err := ParseCartItem(productIDStr, quantityStr)
 		if err != nil {
-			log.Printf("[RedisService] 解析购物车商品失败 | 用户ID: %d | 商品ID: %s | 数量: %s | 错误: %v", userID, productIDStr, quantityStr, err)
+			logger.Sugar.Errorf("[RedisService] 解析购物车商品失败 | 用户ID: %d | 商品ID: %s | 数量: %s | 错误: %v", userID, productIDStr, quantityStr, err)
 			continue // 跳过无效的商品
 		}
 
-		carts = append(carts, domain2.Cart{
+		items = append(items, domain2.CartItem{
 			UserID:    userID,
 			ProductID: productID,
 			Quantity:  quantity,
 		})
 	}
 
-	log.Printf("[RedisService] 获取购物车成功 | 用户ID：%d | 商品数量：%d", userID, len(carts))
-	return carts, nil
+	logger.Sugar.Infof("[RedisService] 获取购物车成功 | 用户ID：%d | 商品数量：%d", userID, len(items))
+	return items, nil
+}
+
+// CacheCartItems 将购物车商品列表回填到 Redis Hash
+func (s *CartService) CacheCartItems(userID int64, items []domain2.CartItem, expiration time.Duration) error {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyCart, userID)
+
+	pipe := s.client.Pipeline()
+	for _, item := range items {
+		pipe.HSet(ctx, key, strconv.FormatInt(item.ProductID, 10), item.Quantity)
+	}
+	pipe.Expire(ctx, key, expiration)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return &domain2.BusinessError{
+			Code: domain2.ErrCodeCacheError,
+			Msg:  "回填购物车缓存失败",
+		}
+	}
+	return nil
+}
+
+// CacheNullCart 缓存空购物车标记（防穿透）
+func (s *CartService) CacheNullCart(userID int64, expiration time.Duration) error {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyCartNull, userID)
+	if err := s.client.Set(ctx, key, 1, expiration).Err(); err != nil {
+		return &domain2.BusinessError{
+			Code: domain2.ErrCodeCacheError,
+			Msg:  "缓存空购物车失败",
+		}
+	}
+	return nil
+}
+
+// IsNullCart 检查是否命中空购物车标记
+func (s *CartService) IsNullCart(userID int64) (bool, error) {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyCartNull, userID)
+	_, err := s.client.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ParseCartItem 解析商品ID和数量
@@ -235,13 +282,13 @@ func ParseCartItem(productIDStr, quantityStr string) (int64, int, error) {
 	// 解析商品ID
 	productID, err := strconv.ParseInt(productIDStr, 10, 64)
 	if err != nil {
-		log.Printf("[RedisService] 解析商品ID失败: %s | 错误: %v", productIDStr, err)
+		logger.Sugar.Errorf("[RedisService] 解析商品ID失败: %s | 错误: %v", productIDStr, err)
 	}
 
 	// 解析数量
 	quantity, err = strconv.Atoi(quantityStr)
 	if err != nil {
-		log.Printf("[RedisService] 解析数量失败: %s | 错误: %v", quantityStr, err)
+		logger.Sugar.Errorf("[RedisService] 解析数量失败: %s | 错误: %v", quantityStr, err)
 	}
 	return productID, quantity, err
 }
@@ -280,23 +327,3 @@ func (s *CartService) RemoveFromCartRedis(userID, productID int64) error {
 	return nil
 }
 
-// GetStock 获取Redis商品库存
-func (s *CartService) GetStock(productID int64) (int, error) {
-	ctx := context.Background()
-	key := myredis.BuildKey(myredis.KeyCart, productID)
-	result, err := s.client.HGetAll(ctx, key).Result()
-	if err != nil {
-		return 0, &domain2.BusinessError{
-			Code: domain2.ErrCodeCacheError,
-			Msg:  "获取商品库存失败: " + err.Error(),
-		}
-	}
-	res, err := strconv.Atoi(result["quantity"])
-	if err != nil {
-		return 0, &domain2.BusinessError{
-			Code: domain2.ErrCodeCacheDeserializeError,
-			Msg:  "获取商品库存失败: " + err.Error(),
-		}
-	}
-	return res, nil
-}

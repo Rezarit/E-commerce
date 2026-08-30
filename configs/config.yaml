@@ -21,3 +21,8 @@ rabbitmq:
   queues:
     order: "order_queue"
     cart: "cart_queue"
+
+logger:
+  level: "info"
+  format: "console"
+  output_path: "stdout"

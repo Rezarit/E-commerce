@@ -1,8 +1,8 @@
 package rabbitmq
 
 import (
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"github.com/streadway/amqp"
-	"log"
 )
 
 var (
@@ -17,14 +17,14 @@ func InitRabbitMQ(url string, queues map[string]string) error {
 	// 连接到RabbitMQ服务器
 	conn, err = amqp.Dial(url)
 	if err != nil {
-		log.Printf("无法连接到RabbitMQ: %v", err)
+		logger.Sugar.Errorf("无法连接到RabbitMQ: %v", err)
 		return err
 	}
 
 	// 创建通道
 	channel, err = conn.Channel()
 	if err != nil {
-		log.Printf("无法打开通道: %v", err)
+		logger.Sugar.Errorf("无法打开通道: %v", err)
 		return err
 	}
 
@@ -41,13 +41,13 @@ func InitRabbitMQ(url string, queues map[string]string) error {
 			nil,
 		)
 		if err != nil {
-			log.Printf("无法声明队列 %s: %v", queueName, err)
+			logger.Sugar.Errorf("无法声明队列 %s: %v", queueName, err)
 			return err
 		}
 		declaredQueues[key] = queueName
 	}
 
-	log.Println("RabbitMQ 初始化成功，所有队列已声明！")
+	logger.Sugar.Info("RabbitMQ 初始化成功，所有队列已声明！")
 	return nil
 }
 
@@ -63,16 +63,16 @@ func GetChannel() *amqp.Channel {
 
 // Close 关闭RabbitMQ连接和通道
 func Close() {
-	log.Println("正在关闭RabbitMQ连接...")
+	logger.Sugar.Info("正在关闭RabbitMQ连接...")
 	if channel != nil {
 		if err := channel.Close(); err != nil {
-			log.Printf("关闭RabbitMQ通道失败: %v", err)
+			logger.Sugar.Errorf("关闭RabbitMQ通道失败: %v", err)
 		}
 	}
 	if conn != nil {
 		if err := conn.Close(); err != nil {
-			log.Printf("关闭RabbitMQ连接失败: %v", err)
+			logger.Sugar.Errorf("关闭RabbitMQ连接失败: %v", err)
 		}
 	}
-	log.Println("RabbitMQ连接已成功关闭。")
+	logger.Sugar.Info("RabbitMQ连接已成功关闭。")
 }

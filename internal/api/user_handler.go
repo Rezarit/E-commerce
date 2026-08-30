@@ -4,9 +4,9 @@ import (
 	common2 "github.com/Rezarit/go-seckill-system/internal/api/common"
 	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
 	"github.com/Rezarit/go-seckill-system/internal/service"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"github.com/Rezarit/go-seckill-system/pkg/response"
 	"github.com/gin-gonic/gin"
-	"log"
 )
 
 func Register(client *gin.Context) {
@@ -51,7 +51,7 @@ func RefreshAccessToken(client *gin.Context) {
 	// 读取Authorization请求头
 	authHeader := client.GetHeader("Authorization")
 	if authHeader == "" {
-		log.Printf("[登录态验证失败] 请求头Authorization为空 | 请求路径：%s", client.FullPath())
+		logger.Sugar.Errorf("[登录态验证失败] 请求头Authorization为空 | 请求路径：%s", client.FullPath())
 		response.Fail(client, domain2.ErrCodeTokenEmpty, "请先登录")
 		return
 	}

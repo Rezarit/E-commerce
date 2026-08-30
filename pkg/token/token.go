@@ -4,8 +4,8 @@ import (
 	"errors"
 	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
 	"github.com/Rezarit/go-seckill-system/pkg/config"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"github.com/dgrijalva/jwt-go"
-	"log"
 	"strings"
 	"time"
 )
@@ -13,7 +13,7 @@ import (
 func GetTokenFromAuthHeader(authHeader string) (string, error) {
 	parts := strings.SplitN(authHeader, " ", 2)
 	if !(len(parts) == 2 && strings.EqualFold(parts[0], "Bearer")) {
-		log.Printf("[登录态验证失败] Authorization格式错误 | 错误值：%s", authHeader)
+		logger.Sugar.Errorf("[登录态验证失败] Authorization格式错误 | 错误值：%s", authHeader)
 		return "", errors.New("无效的请求头")
 	}
 	return parts[1], nil

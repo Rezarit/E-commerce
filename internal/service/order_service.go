@@ -3,61 +3,120 @@ package service
 import (
 	dao2 "github.com/Rezarit/go-seckill-system/internal/dao"
 	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
+	myredis "github.com/Rezarit/go-seckill-system/pkg/redis"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
-	"log"
 )
 
 // MakeOrder 下单
 func MakeOrder(userID int64, address string) error {
-	log.Printf("[Service] 开始下单 | 用户ID：%d", userID)
+	logger.Sugar.Infof("[Service] 开始下单 | 用户ID：%d", userID)
 
-	carts, err := GetCartItems(userID)
+	items, err := GetCartItems(userID)
 	if err != nil {
 		return err
 	}
-	err = CheckCart(carts)
-	if err != nil {
-		return err
-	}
-
-	// 创建订单
-	err = createOrder(userID, address)
+	err = CheckCart(items)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("[Service] 下单成功 | 用户ID：%d", userID)
+	// 入口拦截：遍历购物车，逐个 Lua 扣 Redis 库存
+	deducted := make([]domain2.OrderItemMsg, 0, len(items))
+	for _, item := range items {
+		if _, err := stockDeductService.DeductStock(item.ProductID, item.Quantity); err != nil {
+			// 扣减失败（库存不足），加回已扣的，避免部分扣减
+			for _, d := range deducted {
+				_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
+			}
+			logger.Sugar.Errorf("[Service] 扣减库存失败 | 商品ID：%d | 错误：%v", item.ProductID, err)
+			return &domain2.BusinessError{
+				Code: domain2.ErrCodeParamInvalid,
+				Msg:  "商品库存不足",
+			}
+		}
+		deducted = append(deducted, domain2.OrderItemMsg{ProductID: item.ProductID, Quantity: item.Quantity})
+	}
+
+	// 发 MQ（带上已扣减的商品清单）
+	err = createOrder(userID, address, deducted)
+	if err != nil {
+		// 发 MQ 失败，加回已扣的库存
+		for _, d := range deducted {
+			_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
+		}
+		return err
+	}
+
+	logger.Sugar.Infof("[Service] 下单成功 | 用户ID：%d", userID)
 	return nil
 }
 
-// GetCartItems 获取用户购物车商品
-func GetCartItems(userID int64) ([]domain2.Cart, error) {
-	carts, err := cartService.GetCartRedis(userID)
+// GetCartItems 获取用户购物车商品（Redis 优先，未命中读 MySQL 兜底）
+func GetCartItems(userID int64) ([]domain2.CartItem, error) {
+	// 1. 空购物车标记命中，直接返回空（防穿透）
+	if isNull, err := cartService.IsNullCart(userID); err == nil && isNull {
+		return []domain2.CartItem{}, nil
+	}
+
+	// 2. 读 Redis 购物车
+	items, err := cartService.GetCartRedis(userID)
 	if err != nil {
-		log.Printf("[Service] 获取购物车失败 | 用户ID：%d | 错误：%v", userID, err)
+		logger.Sugar.Errorf("[Service] 获取购物车失败 | 用户ID：%d | 错误：%v", userID, err)
 		return nil, &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "获取购物车失败",
 		}
 	}
-	return carts, nil
+	if len(items) > 0 {
+		return items, nil
+	}
+
+	// 3. Redis 为空，读 MySQL 兜底
+	dbItems, err := dao2.ShowCart(userID)
+	if err != nil {
+		logger.Sugar.Errorf("[Service] 获取购物车(MySQL)失败 | 用户ID：%d | 错误：%v", userID, err)
+		return nil, &domain2.BusinessError{
+			Code: domain2.ErrCodeDBError,
+			Msg:  "获取购物车失败",
+		}
+	}
+
+	// 4. MySQL 有数据 → 回填 Redis
+	if len(dbItems) > 0 {
+		if err := cartService.CacheCartItems(userID, dbItems, myredis.DefaultSessionTTL); err != nil {
+			logger.Sugar.Errorf("[Service] 回填购物车缓存失败 | 用户ID：%d | 错误：%v", userID, err)
+		}
+		return dbItems, nil
+	}
+
+	// 5. MySQL 也为空 → 缓存空标记（短 TTL）
+	if err := cartService.CacheNullCart(userID, myredis.DefaultNullCacheTTL); err != nil {
+		logger.Sugar.Errorf("[Service] 缓存空购物车失败 | 用户ID：%d | 错误：%v", userID, err)
+	}
+	return []domain2.CartItem{}, nil
 }
 
 // ExecuteOrderCreation 创建订单
-func ExecuteOrderCreation(userID int64, address string, carts []domain2.Cart) (int64, error) {
+func ExecuteOrderCreation(userID int64, address string, items []domain2.OrderItemMsg) (orderID int64, err error) {
 	// 开启事务
 	tx := dao2.DB.Begin()
 	if tx.Error != nil {
-		log.Printf("[Service] 开启事务失败: %v", tx.Error)
+		logger.Sugar.Errorf("[Service] 开启事务失败: %v", tx.Error)
 		return 0, &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "无法处理订单"}
 	}
 
-	// 确保事务会被处理
+	// 确保事务会被处理；recover 接住 panic 后必须把 err 传出去，
+	// 否则函数会返回 (0, nil)，调用方误以为下单成功。
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			log.Printf("[Service] 事务处理中发生 Panic: %v", r)
+			logger.Sugar.Errorf("[Service] 事务处理中发生 Panic: %v", r)
+			err = &domain2.BusinessError{
+				Code: domain2.ErrCodeDBError,
+				Msg:  "订单处理异常，请稍后重试",
+			}
 		}
 	}()
 
@@ -65,11 +124,11 @@ func ExecuteOrderCreation(userID int64, address string, carts []domain2.Cart) (i
 	order := domain2.Order{
 		UserID:  userID,
 		Address: address,
-		Total:   calculateTotalAmount(carts),
+		Total:   calculateTotalAmount(items),
 	}
 
 	if err := dao2.CreateOrder(tx, &order); err != nil {
-		log.Printf("[Service] 创建订单失败 | 用户ID：%d | 错误：%v", userID, err)
+		logger.Sugar.Errorf("[Service] 创建订单失败 | 用户ID：%d | 错误：%v", userID, err)
 		tx.Rollback()
 		return 0, &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
@@ -78,29 +137,30 @@ func ExecuteOrderCreation(userID int64, address string, carts []domain2.Cart) (i
 	}
 
 	// 创建订单商品并处理库存
-	if err := createOrderItemsAndUpdateStock(tx, order.OrderID, carts); err != nil {
+	if err := createOrderItemsAndUpdateStock(tx, order.OrderID, items); err != nil {
 		tx.Rollback()
 		return 0, err
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		log.Printf("[Service] 提交事务失败: %v", err)
+		logger.Sugar.Errorf("[Service] 提交事务失败: %v", err)
 		tx.Rollback()
 		return 0, &domain2.BusinessError{Code: domain2.ErrCodeDBError, Msg: "订单最终提交失败"}
 	}
 
-	log.Printf("[Service] 订单 %d 创建成功，事务已提交", order.OrderID)
+	logger.Sugar.Infof("[Service] 订单 %d 创建成功，事务已提交", order.OrderID)
 	return order.OrderID, nil
 }
 
-// createOrder 创建订单
-func createOrder(userID int64, address string) error {
-	log.Printf("[Service] 接收到下单请求 | 用户ID: %d, 地址: %s", userID, address)
+// createOrder 创建订单（发 MQ，带上入口已扣减的商品清单）
+func createOrder(userID int64, address string, items []domain2.OrderItemMsg) error {
+	logger.Sugar.Infof("[Service] 接收到下单请求 | 用户ID: %d, 地址: %s", userID, address)
 
 	// 创建订单消息
 	orderMsg := &domain2.OrderMessage{
 		UserID:  userID,
 		Address: address,
+		Items:   items,
 	}
 
 	// 发送消息到MQ
@@ -109,17 +169,17 @@ func createOrder(userID int64, address string) error {
 		return err
 	}
 
-	log.Printf("[Service] 下单请求已成功发送到MQ | 用户ID: %d", userID)
+	logger.Sugar.Infof("[Service] 下单请求已成功发送到MQ | 用户ID: %d", userID)
 	return nil // 立刻返回成功
 }
 
 // calculateTotalAmount 计算订单总金额
-func calculateTotalAmount(carts []domain2.Cart) decimal.Decimal {
+func calculateTotalAmount(items []domain2.OrderItemMsg) decimal.Decimal {
 	total := decimal.NewFromInt(0)
-	for _, cart := range carts {
-		product, err := dao2.GetProductByID(cart.ProductID)
+	for _, item := range items {
+		product, err := dao2.GetProductByID(item.ProductID)
 		if err == nil {
-			itemTotal := product.Price.Mul(decimal.NewFromInt(int64(cart.Quantity)))
+			itemTotal := product.Price.Mul(decimal.NewFromInt(int64(item.Quantity)))
 			total = total.Add(itemTotal)
 		}
 	}
@@ -127,9 +187,9 @@ func calculateTotalAmount(carts []domain2.Cart) decimal.Decimal {
 }
 
 // createOrderItemsAndUpdateStock 创建订单商品并更新库存
-func createOrderItemsAndUpdateStock(tx *gorm.DB, orderID int64, carts []domain2.Cart) error {
-	for _, cart := range carts {
-		if err := processCartItem(tx, orderID, cart); err != nil {
+func createOrderItemsAndUpdateStock(tx *gorm.DB, orderID int64, items []domain2.OrderItemMsg) error {
+	for _, item := range items {
+		if err := processCartItem(tx, orderID, item); err != nil {
 			return err
 		}
 	}
@@ -140,7 +200,7 @@ func createOrderItemsAndUpdateStock(tx *gorm.DB, orderID int64, carts []domain2.
 func getProductInfo(productID int64) (*domain2.Product, error) {
 	product, err := dao2.GetProductByID(productID)
 	if err != nil {
-		log.Printf("[Service] 获取商品信息失败 | 商品ID：%d | 错误：%v", productID, err)
+		logger.Sugar.Errorf("[Service] 获取商品信息失败 | 商品ID：%d | 错误：%v", productID, err)
 		return nil, &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "获取商品信息失败",
@@ -149,30 +209,18 @@ func getProductInfo(productID int64) (*domain2.Product, error) {
 	return product, nil
 }
 
-// checkStock 检查库存
-func checkStock(product *domain2.Product, quantity int) error {
-	if product.Stock < quantity {
-		log.Printf("[Service] 商品库存不足 | 商品ID：%d | 库存：%d | 需求：%d", product.ProductID, product.Stock, quantity)
-		return &domain2.BusinessError{
-			Code: domain2.ErrCodeParamInvalid,
-			Msg:  "商品库存不足",
-		}
-	}
-	return nil
-}
-
 // createOrderItem 创建订单商品
-func createOrderItem(tx *gorm.DB, orderID int64, cart domain2.Cart, product *domain2.Product) error {
+func createOrderItem(tx *gorm.DB, orderID int64, item domain2.OrderItemMsg, product *domain2.Product) error {
 	orderItem := domain2.OrderItem{
 		OrderID:     orderID,
-		ProductID:   cart.ProductID,
+		ProductID:   item.ProductID,
 		ProductName: product.ProductName,
-		Quantity:    cart.Quantity,
+		Quantity:    item.Quantity,
 		Price:       product.Price,
 	}
 
 	if err := dao2.CreateOrderItem(tx, &orderItem); err != nil {
-		log.Printf("[Service] 创建订单商品失败 | 订单ID：%d | 商品ID：%d | 错误：%v", orderID, cart.ProductID, err)
+		logger.Sugar.Errorf("[Service] 创建订单商品失败 | 订单ID：%d | 商品ID：%d | 错误：%v", orderID, item.ProductID, err)
 		return &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "创建订单商品失败",
@@ -181,50 +229,40 @@ func createOrderItem(tx *gorm.DB, orderID int64, cart domain2.Cart, product *dom
 	return nil
 }
 
-// updateProductStock 更新商品库存
+// updateProductStock 更新商品库存（Redis 已在入口扣减，这里只扣 MySQL）
 func updateProductStock(tx *gorm.DB, product *domain2.Product, quantity int) error {
-	newStock, err := stockDeductService.DeductStock(product.ProductID, quantity)
-	if err != nil {
-		log.Printf("redis扣减库存失败: %v", err)
-		return &domain2.BusinessError{
-			Code: domain2.ErrCodeDBError,
-			Msg:  "更新商品库存失败",
-		}
-	}
-	// 更新数据库中的库存
-	product.Stock = newStock
-	if err = dao2.DeductStock(tx, product.ProductID, quantity); err != nil {
-		log.Printf("数据库更新库存失败: %v", err)
+	if err := dao2.DeductStock(tx, product.ProductID, quantity); err != nil {
+		logger.Sugar.Errorf("数据库更新库存失败: %v", err)
 		return &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "更新商品库存失败",
 		}
 	}
 
-	log.Printf("库存减扣成功 | 商品ID: %d | 数量: %d | 新库存: %d", product.ProductID, quantity, newStock)
+	logger.Sugar.Infof("数据库库存减扣成功 | 商品ID: %d | 数量: %d", product.ProductID, quantity)
 	return nil
 }
 
 // GetOrderList 获取用户订单列表
 func GetOrderList(userID int64) ([]domain2.Order, error) {
-	log.Printf("[Service] 获取用户订单列表 | 用户ID：%d", userID)
+	logger.Sugar.Infof("[Service] 获取用户订单列表 | 用户ID：%d", userID)
 
 	orders, err := dao2.GetOrdersByUserID(userID)
 	if err != nil {
-		log.Printf("[Service] 获取订单列表失败 | 用户ID：%d | 错误：%v", userID, err)
+		logger.Sugar.Errorf("[Service] 获取订单列表失败 | 用户ID：%d | 错误：%v", userID, err)
 		return nil, &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "获取订单列表失败",
 		}
 	}
 
-	log.Printf("[Service] 获取订单列表成功 | 用户ID：%d | 订单数量：%d", userID, len(orders))
+	logger.Sugar.Infof("[Service] 获取订单列表成功 | 用户ID：%d | 订单数量：%d", userID, len(orders))
 	return orders, nil
 }
 
 // GetOrderDetail 获取订单详情
 func GetOrderDetail(orderID, userID int64) (*domain2.Order, []domain2.OrderItem, error) {
-	log.Printf("[Service] 获取订单详情 | 订单ID：%d | 用户ID：%d", orderID, userID)
+	logger.Sugar.Infof("[Service] 获取订单详情 | 订单ID：%d | 用户ID：%d", orderID, userID)
 
 	// 获取订单
 	order, err := getOrderByID(orderID)
@@ -243,7 +281,7 @@ func GetOrderDetail(orderID, userID int64) (*domain2.Order, []domain2.OrderItem,
 		return nil, nil, err
 	}
 
-	log.Printf("[Service] 获取订单详情成功 | 订单ID：%d | 用户ID：%d", orderID, userID)
+	logger.Sugar.Infof("[Service] 获取订单详情成功 | 订单ID：%d | 用户ID：%d", orderID, userID)
 	return order, orderItems, nil
 }
 
@@ -251,7 +289,7 @@ func GetOrderDetail(orderID, userID int64) (*domain2.Order, []domain2.OrderItem,
 func getOrderByID(orderID int64) (*domain2.Order, error) {
 	order, err := dao2.GetOrderByID(orderID)
 	if err != nil {
-		log.Printf("[Service] 获取订单失败 | 订单ID：%d | 错误：%v", orderID, err)
+		logger.Sugar.Errorf("[Service] 获取订单失败 | 订单ID：%d | 错误：%v", orderID, err)
 		return nil, &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "获取订单失败",
@@ -263,7 +301,7 @@ func getOrderByID(orderID int64) (*domain2.Order, error) {
 // checkOrderOwnership 检查订单归属
 func checkOrderOwnership(order *domain2.Order, userID int64) error {
 	if order.UserID != userID {
-		log.Printf("[Service] 订单归属错误 | 订单ID：%d | 用户ID：%d | 订单所属用户：%d", order.OrderID, userID, order.UserID)
+		logger.Sugar.Errorf("[Service] 订单归属错误 | 订单ID：%d | 用户ID：%d | 订单所属用户：%d", order.OrderID, userID, order.UserID)
 		return &domain2.BusinessError{
 			Code: domain2.ErrCodePermissionDenied,
 			Msg:  "无权访问此订单",
@@ -276,7 +314,7 @@ func checkOrderOwnership(order *domain2.Order, userID int64) error {
 func getOrderItemsByOrderID(orderID int64) ([]domain2.OrderItem, error) {
 	orderItems, err := dao2.GetOrderItemsByOrderID(orderID)
 	if err != nil {
-		log.Printf("[Service] 获取订单商品失败 | 订单ID：%d | 错误：%v", orderID, err)
+		logger.Sugar.Errorf("[Service] 获取订单商品失败 | 订单ID：%d | 错误：%v", orderID, err)
 		return nil, &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "获取订单商品失败",

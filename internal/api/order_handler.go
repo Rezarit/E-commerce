@@ -4,9 +4,9 @@ import (
 	common2 "github.com/Rezarit/go-seckill-system/internal/api/common"
 	"github.com/Rezarit/go-seckill-system/internal/domain"
 	"github.com/Rezarit/go-seckill-system/internal/service"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"github.com/Rezarit/go-seckill-system/pkg/response"
 	"github.com/gin-gonic/gin"
-	"log"
 	"strconv"
 )
 
@@ -62,7 +62,7 @@ func ParseOrderID(client *gin.Context) int64 {
 	orderIDStr := client.Param("order_id")
 	orderID, err := strconv.ParseInt(orderIDStr, 10, 64)
 	if err != nil {
-		log.Printf("[API] 解析订单ID失败 | 错误：%v", err)
+		logger.Sugar.Errorf("[API] 解析订单ID失败 | 错误：%v", err)
 		return 0
 	}
 	return orderID

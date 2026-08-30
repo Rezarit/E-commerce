@@ -5,9 +5,9 @@ import (
 	"fmt"
 	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
 	"github.com/Rezarit/go-seckill-system/pkg/config"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"github.com/Rezarit/go-seckill-system/pkg/token"
 	"github.com/dgrijalva/jwt-go"
-	"log"
 	"time"
 )
 
@@ -24,7 +24,7 @@ func ParseAccessToken(tokenStr string) (*domain2.CustomClaims, error) {
 		if len(tokenStr) > 10 {
 			tokenPreview = tokenStr[:10]
 		}
-		log.Printf("[解析AccessToken失败] Token：%s，错误：%v", tokenPreview, err)
+		logger.Sugar.Errorf("[解析AccessToken失败] Token：%s，错误：%v", tokenPreview, err)
 		return nil, fmt.Errorf("access token解析失败：%w", err)
 	}
 	return claims, nil
@@ -39,7 +39,7 @@ func ParseRefreshToken(tokenStr string) (*domain2.RefreshTokenClaims, error) {
 		if len(tokenStr) > 10 {
 			tokenPreview = tokenStr[:10]
 		}
-		log.Printf("[解析RefreshToken失败] Token：%s，错误：%v", tokenPreview, err)
+		logger.Sugar.Errorf("[解析RefreshToken失败] Token：%s，错误：%v", tokenPreview, err)
 		return nil, errors.New("refresh token解析失败：" + err.Error())
 	}
 	return claims, nil
@@ -58,7 +58,7 @@ func GenerateAccessToken(userID int64) (string, error) {
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := accessToken.SignedString(getJWTSecret())
 	if err != nil {
-		log.Printf("[AccessToken生成失败] 用户ID：%d，错误：%v", userID, err)
+		logger.Sugar.Errorf("[AccessToken生成失败] 用户ID：%d，错误：%v", userID, err)
 		return "", &domain2.BusinessError{
 			Code: domain2.ErrCodeSystemError,
 			Msg:  "登录态生成失败，请重试",
@@ -80,7 +80,7 @@ func GenerateRefreshToken(userID int64) (string, error) {
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := refreshToken.SignedString(getJWTSecret())
 	if err != nil {
-		log.Printf("[RefreshToken生成失败] 用户ID：%d，错误：%v", userID, err)
+		logger.Sugar.Errorf("[RefreshToken生成失败] 用户ID：%d，错误：%v", userID, err)
 		return "", &domain2.BusinessError{
 			Code: domain2.ErrCodeSystemError,
 			Msg:  "刷新登录态失败",

@@ -72,7 +72,7 @@ CREATE TABLE `carts` (
                          `product_id` bigint DEFAULT NULL,
                          `quantity` int DEFAULT '1',
                          PRIMARY KEY (`cart_id`),
-                         KEY `idx_carts_user_id` (`user_id`),
+                         UNIQUE KEY `uk_carts_user_product` (`user_id`, `product_id`),
                          KEY `idx_carts_product_id` (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

@@ -13,7 +13,8 @@ const (
 	KeyOrderResult   = "user:order:%d:%d"        // 订单结果缓存
 
 	// 购物车相关
-	KeyCart = "cart:%d" // 用户购物车，使用Hash结构存储
+	KeyCart     = "cart:%d"      // 用户购物车，使用Hash结构存储
+	KeyCartNull = "cart:null:%d" // 购物车空值缓存（防穿透）
 )
 
 // 默认过期时间常量

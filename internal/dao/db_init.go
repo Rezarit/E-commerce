@@ -3,10 +3,10 @@ package dao
 import (
 	"fmt"
 	"github.com/Rezarit/go-seckill-system/pkg/config"
+	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
-	"log"
+	logger2 "gorm.io/gorm/logger"
 	"time"
 )
 
@@ -20,8 +20,8 @@ func InitDatabase() error {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		dbCfg.User, dbCfg.Password, dbCfg.Host, dbCfg.Port, dbCfg.DBName)
 
-	log.Println("[数据库] 开始初始化数据库连接...")
-	log.Printf("[数据库] 连接信息: %s@%s:%d/%s",
+	logger.Sugar.Info("[数据库] 开始初始化数据库连接...")
+	logger.Sugar.Infof("[数据库] 连接信息: %s@%s:%d/%s",
 		dbCfg.User, dbCfg.Host, dbCfg.Port, dbCfg.DBName)
 
 	// 初始化 GORM 连接
@@ -30,7 +30,7 @@ func InitDatabase() error {
 	for i := 0; i < maxRetries; i++ {
 		// 初始化 GORM 连接
 		DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
-			Logger:                 logger.Default.LogMode(logger.Info),
+			Logger:                 logger2.Default.LogMode(logger2.Info),
 			SkipDefaultTransaction: true,
 		})
 
@@ -38,17 +38,17 @@ func InitDatabase() error {
 			break
 		}
 
-		log.Printf("[数据库] 连接数据库失败，第 %d 次重试... 错误: %v", i+1, err)
+		logger.Sugar.Errorf("[数据库] 连接数据库失败，第 %d 次重试... 错误: %v", i+1, err)
 		// 等待5秒再重试
 		time.Sleep(5 * time.Second)
 	}
 
 	// 重试10次失败，放弃
 	if err != nil {
-		log.Printf("[数据库] 初始化数据库连接失败: %v", err)
+		logger.Sugar.Errorf("[数据库] 初始化数据库连接失败: %v", err)
 		return err
 	}
-	log.Println("[数据库] 数据库连接初始化成功")
+	logger.Sugar.Info("[数据库] 数据库连接初始化成功")
 
 	// 获取底层 sql.DB，配置连接池
 	sqlDB, err := DB.DB()
@@ -63,21 +63,21 @@ func InitDatabase() error {
 
 	// 自动迁移表
 	/*
-		log.Println("[数据库] 开始自动迁移数据库表...")
+		logger.Sugar.Info("[数据库] 开始自动迁移数据库表...")
 		err = DB.AutoMigrate(
 			&domain.User{},
 			&domain.Merchant{},
 			&domain.MerchantApplication{},
 			&domain.Product{},
-			&domain.Cart{},
+			&domain.CartItem{},
 			&domain.Order{},
 			&domain.OrderItem{},
 		)
 		if err != nil {
-			log.Printf("[数据库] 自动迁移数据库表失败: %v", err)
+			logger.Sugar.Errorf("[数据库] 自动迁移数据库表失败: %v", err)
 			return err
 		}
-		log.Println("[数据库] 数据库表自动迁移成功")
+		logger.Sugar.Info("[数据库] 数据库表自动迁移成功")
 	*/
 
 	return nil
