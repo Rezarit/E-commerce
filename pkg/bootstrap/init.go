@@ -70,6 +70,8 @@ func initConsumer() {
 	logger.Sugar.Info("[Bootstrap] 订单消费者已启动，在后台等待处理任务...")
 	consumers2.InitCartConsumer()
 	logger.Sugar.Info("[Bootstrap] 购物车消费者已启动，在后台等待处理任务...")
+	consumers2.InitDLXConsumer()
+	logger.Sugar.Info("[Bootstrap] 死信消费者已启动，在后台等待处理任务...")
 }
 
 func initAllProductStock() error {

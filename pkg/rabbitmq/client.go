@@ -11,6 +11,9 @@ var (
 	declaredQueues map[string]string
 )
 
+// 死信交换机名称
+const dlxExchangeName = "dlx_exchange"
+
 // InitRabbitMQ 初始化RabbitMQ连接和通道
 func InitRabbitMQ(url string, queues map[string]string) error {
 	var err error
@@ -28,22 +31,46 @@ func InitRabbitMQ(url string, queues map[string]string) error {
 		return err
 	}
 
+	// 声明死信交换机（fanout：死信消息广播给所有绑定的死信队列）
+	if err = channel.ExchangeDeclare(dlxExchangeName, "fanout", true, false, false, false, nil); err != nil {
+		logger.Sugar.Errorf("无法声明死信交换机 %s: %v", dlxExchangeName, err)
+		return err
+	}
+
 	// 声明队列
 	declaredQueues = make(map[string]string)
 	// 遍历队列
 	for key, queueName := range queues {
+		var args amqp.Table
+
+		// order 主队列绑定死信交换机：消息变死信后自动路由到死信队列
+		if key == "order" {
+			args = amqp.Table{
+				"x-dead-letter-exchange": dlxExchangeName,
+			}
+		}
+
 		_, err = channel.QueueDeclare(
 			queueName,
 			true,
 			false,
 			false,
 			false,
-			nil,
+			args,
 		)
 		if err != nil {
 			logger.Sugar.Errorf("无法声明队列 %s: %v", queueName, err)
 			return err
 		}
+
+		// 死信队列绑定到死信交换机
+		if key == "order_dlx" {
+			if err = channel.QueueBind(queueName, "", dlxExchangeName, false, nil); err != nil {
+				logger.Sugar.Errorf("无法绑定死信队列 %s 到死信交换机: %v", queueName, err)
+				return err
+			}
+		}
+
 		declaredQueues[key] = queueName
 	}
 

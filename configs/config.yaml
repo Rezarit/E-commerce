@@ -21,6 +21,7 @@ rabbitmq:
   queues:
     order: "order_queue"
     cart: "cart_queue"
+    order_dlx: "order_dlx"
 
 logger:
   level: "info"
