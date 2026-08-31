@@ -1,10 +1,13 @@
 package service
 
 import (
+	"errors"
+
 	dao2 "github.com/Rezarit/go-seckill-system/internal/dao"
 	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
 	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	myredis "github.com/Rezarit/go-seckill-system/pkg/redis"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -22,11 +25,12 @@ func MakeOrder(userID int64, address string) error {
 		return err
 	}
 
-	// 入口拦截：遍历购物车，逐个 Lua 扣 Redis 库存
+	// 入口拦截：在 API 层用 Redis Lua 扣库存，库存不足当场返回，不进 MQ
+	// （秒杀核心：让 Redis 挡掉大部分请求，避免 100 个请求全进 MQ 才扣减）
 	deducted := make([]domain2.OrderItemMsg, 0, len(items))
 	for _, item := range items {
 		if _, err := stockDeductService.DeductStock(item.ProductID, item.Quantity); err != nil {
-			// 扣减失败（库存不足），加回已扣的，避免部分扣减
+			// 部分扣减补偿：扣 A 成功、扣 B 失败时，把 A 加回，避免少卖
 			for _, d := range deducted {
 				_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
 			}
@@ -39,10 +43,10 @@ func MakeOrder(userID int64, address string) error {
 		deducted = append(deducted, domain2.OrderItemMsg{ProductID: item.ProductID, Quantity: item.Quantity})
 	}
 
-	// 发 MQ（带上已扣减的商品清单）
+	// 发 MQ（带上已扣减的商品清单，消费者据此建订单，不再读购物车）
 	err = createOrder(userID, address, deducted)
 	if err != nil {
-		// 发 MQ 失败，加回已扣的库存
+		// 发 MQ 失败补偿：订单没进队列，加回已扣的库存
 		for _, d := range deducted {
 			_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
 		}
@@ -99,7 +103,7 @@ func GetCartItems(userID int64) ([]domain2.CartItem, error) {
 }
 
 // ExecuteOrderCreation 创建订单
-func ExecuteOrderCreation(userID int64, address string, items []domain2.OrderItemMsg) (orderID int64, err error) {
+func ExecuteOrderCreation(msgID string, userID int64, address string, items []domain2.OrderItemMsg) (orderID int64, err error) {
 	// 开启事务
 	tx := dao2.DB.Begin()
 	if tx.Error != nil {
@@ -122,14 +126,21 @@ func ExecuteOrderCreation(userID int64, address string, items []domain2.OrderIte
 
 	// 创建订单
 	order := domain2.Order{
+		MsgID:   msgID,
 		UserID:  userID,
 		Address: address,
 		Total:   calculateTotalAmount(items),
 	}
 
 	if err := dao2.CreateOrder(tx, &order); err != nil {
-		logger.Sugar.Errorf("[Service] 创建订单失败 | 用户ID：%d | 错误：%v", userID, err)
 		tx.Rollback()
+		// 幂等命中：同一条消息已处理过（唯一索引挡住），回滚本次事务并当成功返回，
+		// 否则消费者会 Nack 导致 MQ 无限重投这条「已处理」的消息
+		if errors.Is(err, dao2.ErrDuplicateMsgID) {
+			logger.Sugar.Infof("[Service] 消息重复（幂等命中），订单创建被跳过 | msg_id: %s", msgID)
+			return 0, nil
+		}
+		logger.Sugar.Errorf("[Service] 创建订单失败 | 用户ID：%d | 错误：%v", userID, err)
 		return 0, &domain2.BusinessError{
 			Code: domain2.ErrCodeDBError,
 			Msg:  "创建订单失败",
@@ -156,8 +167,9 @@ func ExecuteOrderCreation(userID int64, address string, items []domain2.OrderIte
 func createOrder(userID int64, address string, items []domain2.OrderItemMsg) error {
 	logger.Sugar.Infof("[Service] 接收到下单请求 | 用户ID: %d, 地址: %s", userID, address)
 
-	// 创建订单消息
+	// 创建订单消息（生成唯一 MsgID，用于消费者幂等）
 	orderMsg := &domain2.OrderMessage{
+		MsgID:   uuid.New().String(),
 		UserID:  userID,
 		Address: address,
 		Items:   items,

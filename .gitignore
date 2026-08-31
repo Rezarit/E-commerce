@@ -1,0 +1,18 @@
+# 私人笔记/面试准备（不上传 GitHub）
+docs/
+面经/
+面试问答手册.md
+
+# 编译产物
+seckill.exe
+*.exe
+
+# 本地环境变量 / 敏感配置（未来密钥用）
+.env
+config.local.yaml
+
+# IDE / 系统
+.idea/
+.vscode/
+*.log
+.DS_Store

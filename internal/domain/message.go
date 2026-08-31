@@ -7,6 +7,7 @@ type OrderItemMsg struct {
 }
 
 type OrderMessage struct {
+	MsgID   string         `json:"msg_id"` // 消息唯一ID，用于消费幂等
 	UserID  int64          `json:"user_id"`
 	Address string         `json:"address"`
 	Items   []OrderItemMsg `json:"items"` // 已扣减的商品清单

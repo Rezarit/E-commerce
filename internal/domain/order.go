@@ -18,6 +18,7 @@ const (
 
 type Order struct {
 	OrderID   int64           `json:"order_id" gorm:"primaryKey;autoIncrement"`
+	MsgID     string          `json:"msg_id" gorm:"uniqueIndex"` // 消息ID，用于幂等（一条消息只对应一个订单）
 	UserID    int64           `json:"user_id" gorm:"index"`
 	Address   string          `json:"address" gorm:"not null"`
 	Total     decimal.Decimal `json:"total" gorm:"type:decimal(10,2);default:0"`

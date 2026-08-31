@@ -79,12 +79,14 @@ CREATE TABLE `carts` (
 -- 订单表 (orders)
 CREATE TABLE `orders` (
                           `order_id` bigint NOT NULL AUTO_INCREMENT,
+                          `msg_id` varchar(36) DEFAULT NULL,
                           `user_id` bigint DEFAULT NULL,
                           `address` text NOT NULL,
                           `total` decimal(10,2) DEFAULT '0.00',
                           `status` varchar(255) DEFAULT 'pending',
                           `created_at` datetime(3) DEFAULT NULL,
                           PRIMARY KEY (`order_id`),
+                          UNIQUE KEY `uk_orders_msg_id` (`msg_id`),
                           KEY `idx_orders_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

@@ -23,15 +23,15 @@ func handleOrderMessage(body []byte) error {
 		return err
 	}
 
-	// 直接用消息里入口已扣减的商品清单（不再读购物车）
+	// 直接用消息里入口已扣减的商品清单（不再读购物车：购物车已在入口被读，且库存已扣）
 	items := msg.Items
 	if len(items) == 0 {
 		logger.Sugar.Infof("消费者发现商品清单为空，用户ID: %d，消息将被丢弃", msg.UserID)
 		return nil
 	}
 
-	// 执行数据库下单操作（只建订单 + 扣 MySQL 库存）
-	orderID, err := service2.ExecuteOrderCreation(msg.UserID, msg.Address, items)
+	// 执行数据库下单操作（只建订单 + 扣 MySQL 库存，Redis 库存已在 API 入口扣过）
+	orderID, err := service2.ExecuteOrderCreation(msg.MsgID, msg.UserID, msg.Address, items)
 	if err != nil {
 		logger.Sugar.Errorf("消费者创建订单失败: %v", err)
 		return err

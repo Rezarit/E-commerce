@@ -18,7 +18,8 @@ func AddToCart(userID, productID int64, quantity int) error {
 		}
 	}
 
-	// 先写 MySQL（持久化，upsert 累加数量）
+	// 双写：先写 MySQL（持久源），再写 Redis（缓存，供高频读写）
+	// 顺序有讲究：若 Redis 失败，读兜底能从 MySQL 回填自愈；反之若 MySQL 失败则数据会丢
 	item := domain2.CartItem{
 		UserID:    userID,
 		ProductID: productID,
