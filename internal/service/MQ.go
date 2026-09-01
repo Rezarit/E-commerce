@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"time"
+
 	"github.com/Rezarit/go-seckill-system/internal/domain"
 	"github.com/Rezarit/go-seckill-system/pkg/logger"
 	"github.com/Rezarit/go-seckill-system/pkg/rabbitmq"
@@ -30,6 +32,9 @@ func SendMessage[T any](msg T, queueName string) error {
 		}
 	}
 
+	// 注册确认监听（publisher confirm：确保消息真正到达 MQ）
+	confirms := ch.NotifyPublish(make(chan amqp.Confirmation, 1))
+
 	// 发布消息到队列
 	err = ch.Publish(
 		"",
@@ -50,5 +55,24 @@ func SendMessage[T any](msg T, queueName string) error {
 			Msg:  "信息发布失败，请稍后再试",
 		}
 	}
+
+	// 等 MQ 确认（带超时），超时/未确认视为发布失败
+	select {
+	case confirmed := <-confirms:
+		if !confirmed.Ack {
+			logger.Sugar.Errorf("[Service] 消息被 MQ 拒绝（nack）")
+			return &domain.BusinessError{
+				Code: domain.ErrCodeMQPublishError,
+				Msg:  "信息发布失败，请稍后再试",
+			}
+		}
+	case <-time.After(5 * time.Second):
+		logger.Sugar.Errorf("[Service] 等待 MQ 确认超时，消息可能未到达")
+		return &domain.BusinessError{
+			Code: domain.ErrCodeMQPublishError,
+			Msg:  "信息发布失败，请稍后再试",
+		}
+	}
+
 	return nil
 }

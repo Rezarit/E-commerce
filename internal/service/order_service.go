@@ -12,6 +12,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// syncOrderSem 降级同步下单的信号量：最多 10 个并发同时写 MySQL，
+// 防止 MQ 不可用时大量请求降级把 MySQL 打挂
+var syncOrderSem = make(chan struct{}, 10)
+
 // MakeOrder 下单
 func MakeOrder(userID int64, address string) error {
 	logger.Sugar.Infof("[Service] 开始下单 | 用户ID：%d", userID)
@@ -43,17 +47,47 @@ func MakeOrder(userID int64, address string) error {
 		deducted = append(deducted, domain2.OrderItemMsg{ProductID: item.ProductID, Quantity: item.Quantity})
 	}
 
+	// 生成唯一 MsgID（正常路径和降级路径共用，保证幂等一致）
+	msgID := uuid.New().String()
+
 	// 发 MQ（带上已扣减的商品清单，消费者据此建订单，不再读购物车）
-	err = createOrder(userID, address, deducted)
-	if err != nil {
-		// 发 MQ 失败补偿：订单没进队列，加回已扣的库存
+	err = createOrder(msgID, userID, address, deducted)
+	if err == nil {
+		logger.Sugar.Infof("[Service] 下单成功 | 用户ID：%d", userID)
+		return nil
+	}
+
+	// ===== MQ 不可用，降级为同步下单 =====
+	logger.Sugar.Warnf("[Service] MQ 发布失败，降级为同步下单 | 用户ID：%d | 错误：%v", userID, err)
+
+	// 信号量限流：最多 10 个并发同步写 MySQL，防降级把 MySQL 打挂
+	select {
+	case syncOrderSem <- struct{}{}:
+		defer func() { <-syncOrderSem }() // 用完释放车位
+	default:
+		logger.Sugar.Errorf("[Service] 降级并发超限，拒绝下单 | 用户ID：%d", userID)
+		// 释放已扣的库存
 		for _, d := range deducted {
 			_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
 		}
-		return err
+		return &domain2.BusinessError{
+			Code: domain2.ErrCodeSystemError,
+			Msg:  "系统繁忙，请稍后再试",
+		}
 	}
 
-	logger.Sugar.Infof("[Service] 下单成功 | 用户ID：%d", userID)
+	// 同步建订单（复用 msgID，走幂等）
+	_, syncErr := ExecuteOrderCreation(msgID, userID, address, deducted)
+	if syncErr != nil {
+		// 同步下单也失败：加回已扣的库存
+		for _, d := range deducted {
+			_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
+		}
+		logger.Sugar.Errorf("[Service] 降级同步下单失败 | 用户ID：%d | 错误：%v", userID, syncErr)
+		return syncErr
+	}
+
+	logger.Sugar.Infof("[Service] 降级同步下单成功 | 用户ID：%d", userID)
 	return nil
 }
 
@@ -164,12 +198,12 @@ func ExecuteOrderCreation(msgID string, userID int64, address string, items []do
 }
 
 // createOrder 创建订单（发 MQ，带上入口已扣减的商品清单）
-func createOrder(userID int64, address string, items []domain2.OrderItemMsg) error {
+func createOrder(msgID string, userID int64, address string, items []domain2.OrderItemMsg) error {
 	logger.Sugar.Infof("[Service] 接收到下单请求 | 用户ID: %d, 地址: %s", userID, address)
 
-	// 创建订单消息（生成唯一 MsgID，用于消费者幂等）
+	// 创建订单消息（MsgID 由调用方传入，正常/降级路径共用）
 	orderMsg := &domain2.OrderMessage{
-		MsgID:   uuid.New().String(),
+		MsgID:   msgID,
 		UserID:  userID,
 		Address: address,
 		Items:   items,

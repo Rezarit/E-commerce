@@ -31,6 +31,12 @@ func InitRabbitMQ(url string, queues map[string]string) error {
 		return err
 	}
 
+	// 开启 publisher confirm：发布消息后等 MQ 确认，确保消息真正到达
+	if err = channel.Confirm(false); err != nil {
+		logger.Sugar.Errorf("开启 publisher confirm 失败: %v", err)
+		return err
+	}
+
 	// 声明死信交换机（fanout：死信消息广播给所有绑定的死信队列）
 	if err = channel.ExchangeDeclare(dlxExchangeName, "fanout", true, false, false, false, nil); err != nil {
 		logger.Sugar.Errorf("无法声明死信交换机 %s: %v", dlxExchangeName, err)
