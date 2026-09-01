@@ -147,6 +147,21 @@ func CheckProductOwnership(productID int64, userID int64) error {
 	return nil
 }
 
+// RefreshStockFromDB 刷新式补偿：查 MySQL 库存并覆盖写回 Redis
+// （死信队列处理用：死信=订单没建成=MySQL 库存正确，让 Redis 对齐 MySQL，
+//   以 MySQL 为权威，天然幂等、不会超卖、不信任消息内容）
+func RefreshStockFromDB(productID int64) error {
+	product, err := dao2.GetProductByID(productID)
+	if err != nil {
+		return err
+	}
+	if err := cacheService.CacheProductStock(productID, int32(product.Stock), redis.DefaultSessionTTL); err != nil {
+		return err
+	}
+	logger.Sugar.Infof("[Service] 库存刷新补偿 | 商品ID: %d | 库存: %d", productID, product.Stock)
+	return nil
+}
+
 // GetProductList 获取商品列表
 func GetProductList() ([]domain2.Product, error) {
 	logger.Sugar.Infof("[Service] 开始获取商品列表")
