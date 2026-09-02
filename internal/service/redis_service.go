@@ -109,16 +109,17 @@ func (s *CacheService) BatchCacheProductStocks(stocks map[int64]int32, expiratio
 }
 
 // GetProductFromCache 从缓存获取商品详情
-func (s *CacheService) GetProductFromCache(productID int64) (*domain2.Product, error) {
+// 返回 found：true=命中返回商品，false=缓存未命中（key 不存在，需查 MySQL）
+func (s *CacheService) GetProductFromCache(productID int64) (*domain2.Product, bool, error) {
 	ctx := context.Background()
 	key := myredis.BuildKey(myredis.KeyProductDetail, productID)
 
 	result, err := s.client.Get(ctx, key).Result()
 	if errors.Is(err, redis.Nil) {
-		return nil, nil
+		return nil, false, nil // 未命中，不是错误
 	}
 	if err != nil {
-		return nil, &domain2.BusinessError{
+		return nil, false, &domain2.BusinessError{
 			Code: domain2.ErrCodeCacheError,
 			Msg:  "获取缓存商品失败: " + err.Error(),
 		}
@@ -127,12 +128,48 @@ func (s *CacheService) GetProductFromCache(productID int64) (*domain2.Product, e
 	var product domain2.Product
 	err = json.Unmarshal([]byte(result), &product)
 	if err != nil {
-		return nil, &domain2.BusinessError{
+		return nil, false, &domain2.BusinessError{
 			Code: domain2.ErrCodeCacheDeserializeError,
 			Msg:  "商品反序列化失败: " + err.Error(),
 		}
 	}
-	return &product, nil
+	return &product, true, nil
+}
+
+// TryLockProduct 尝试获取商品缓存重建锁（SETNX 原子抢锁，带 TTL 防死锁）
+// 返回 true = 抢到锁（调用方负责用完释放）
+func (s *CacheService) TryLockProduct(productID int64) (bool, error) {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyProductLock, productID)
+
+	locked, err := s.client.SetNX(ctx, key, 1, myredis.DefaultSeckillLockTTL).Result()
+	if err != nil {
+		return false, err
+	}
+	return locked, nil
+}
+
+// UnlockProduct 释放商品缓存重建锁
+func (s *CacheService) UnlockProduct(productID int64) error {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyProductLock, productID)
+
+	return s.client.Del(ctx, key).Err()
+}
+
+// GetNullProduct 检查是否命中商品空值缓存（防穿透）
+func (s *CacheService) GetNullProduct(productID int64) (bool, error) {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyProductNull, productID)
+
+	_, err := s.client.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // InitAllProductStock 预热所有商品库存

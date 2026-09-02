@@ -9,6 +9,7 @@ const (
 	// 商品相关
 	KeyProductDetail = "cache:product:detail:%d" // 商品详情缓存
 	KeyProductNull   = "cache:product:null:%d"   // 商品空值缓存
+	KeyProductLock   = "lock:product:%d"         // 商品详情缓存重建互斥锁（防击穿）
 	KeySeckillStock  = "seckill:stock:%d"        // 秒杀库存
 	KeyOrderResult   = "user:order:%d:%d"        // 订单结果缓存
 

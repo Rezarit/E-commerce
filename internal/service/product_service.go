@@ -1,6 +1,9 @@
 package service
 
 import (
+	"math/rand"
+	"time"
+
 	dao2 "github.com/Rezarit/go-seckill-system/internal/dao"
 	domain2 "github.com/Rezarit/go-seckill-system/internal/domain"
 	"github.com/Rezarit/go-seckill-system/pkg/logger"
@@ -198,34 +201,85 @@ func SearchProduct(keyword string) ([]domain2.ProductSearchResponse, error) {
 	return resp, nil
 }
 
-// GetProductDetail 获取商品详情
+// GetProductDetail 获取商品详情（缓存 + 击穿锁 + 穿透防护）
 func GetProductDetail(productID int64) (*domain2.Product, error) {
-	// 从缓存获取商品详情
-	product, err := cacheService.GetProductFromCache(productID)
-	if err == nil {
+	// 空值缓存命中：商品不存在，直接返回（防穿透）
+	if isNull, err := cacheService.GetNullProduct(productID); err == nil && isNull {
+		logger.Sugar.Infof("[Service] 命中空值缓存 | 商品ID：%d", productID)
+		return nil, &domain2.BusinessError{
+			Code: domain2.ErrCodeProductNotFound,
+			Msg:  "商品不存在",
+		}
+	}
+
+	// 从缓存获取商品详情（found=true 命中）
+	product, found, err := cacheService.GetProductFromCache(productID)
+	if err == nil && found {
 		logger.Sugar.Infof("[Service] 从缓存获取商品详情成功 | 商品ID：%d", productID)
 		return product, nil
 	}
 
-	// 缓存未命中，从数据库获取
-	product, err = dao2.GetProductByID(productID)
-	if err != nil {
-		logger.Sugar.Errorf("[Service] 获取商品详情失败 | 商品ID：%d | 错误：%v", productID, err)
-		return nil, &domain2.BusinessError{
-			Code: domain2.ErrCodeDBError,
-			Msg:  "获取商品详情失败",
+	// 缓存未命中：尝试获取重建锁（防击穿——热点 key 过期瞬间只有一个请求查 DB）
+	locked, lockErr := cacheService.TryLockProduct(productID)
+	if lockErr != nil {
+		logger.Sugar.Errorf("[Service] 获取商品锁失败 | 商品ID：%d | 错误：%v", productID, lockErr)
+	}
+	if locked {
+		defer func() {
+			if err := cacheService.UnlockProduct(productID); err != nil {
+				logger.Sugar.Errorf("[Service] 释放商品锁失败 | 商品ID：%d | 错误：%v", productID, err)
+			}
+		}()
+		// 抢到锁：从数据库获取
+		product, err = dao2.GetProductByID(productID)
+		if err != nil {
+			// 商品不存在：缓存空值防穿透
+			logger.Sugar.Infof("[Service] 商品不存在，缓存空值 | 商品ID：%d", productID)
+			_ = cacheService.CacheNullProduct(productID, redis.DefaultNullCacheTTL)
+			return nil, &domain2.BusinessError{
+				Code: domain2.ErrCodeProductNotFound,
+				Msg:  "商品不存在",
+			}
+		}
+
+		// 缓存商品详情（TTL 加随机偏移，防雪崩）
+		ttl := cacheTTLWithJitter(redis.DefaultProductCacheTTL)
+		if cacheErr := cacheService.CacheProduct(product, ttl); cacheErr != nil {
+			logger.Sugar.Errorf("[Service] 缓存商品详情失败 | 商品ID：%d | 错误：%v", productID, cacheErr)
+		}
+
+		logger.Sugar.Infof("[Service] 获取商品详情成功 | 商品ID：%d", productID)
+		return product, nil
+	}
+
+	// 没抢到锁：说明别的请求正在查库回填，短暂等待后重查缓存
+	for i := 0; i < 3; i++ {
+		time.Sleep(50 * time.Millisecond)
+		product, found, err = cacheService.GetProductFromCache(productID)
+		if err == nil && found {
+			return product, nil
+		}
+		// 若对方查到的是空值，GetNullProduct 也检查下
+		if isNull, _ := cacheService.GetNullProduct(productID); isNull {
+			return nil, &domain2.BusinessError{
+				Code: domain2.ErrCodeProductNotFound,
+				Msg:  "商品不存在",
+			}
 		}
 	}
 
-	// 缓存商品详情
-	go func() {
-		if cacheErr := cacheService.CacheProduct(product, redis.DefaultProductCacheTTL); cacheErr != nil {
-			logger.Sugar.Errorf("[Service] 异步缓存商品详情失败 | 商品ID：%d | 错误：%v", productID, cacheErr)
-		}
-	}()
+	logger.Sugar.Errorf("[Service] 等待缓存重建超时 | 商品ID：%d", productID)
+	return nil, &domain2.BusinessError{
+		Code: domain2.ErrCodeDBError,
+		Msg:  "系统繁忙，请稍后再试",
+	}
+}
 
-	logger.Sugar.Infof("[Service] 获取商品详情成功 | 商品ID：%d", productID)
-	return product, nil
+// cacheTTLWithJitter 给 TTL 加随机偏移（±10%），防止大量 key 同时过期导致雪崩
+func cacheTTLWithJitter(base time.Duration) time.Duration {
+	// 随机 -10% ~ +10%
+	offset := time.Duration(rand.Intn(20)-10) * base / 100
+	return base + offset
 }
 
 func GetMerchantProductList(userID int64) ([]domain2.Product, error) {
