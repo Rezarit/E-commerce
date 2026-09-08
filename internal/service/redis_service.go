@@ -14,12 +14,21 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-// OrderResult 订单结果
-func (s *OrderService) OrderResult(orderID, userID int64, expiration time.Duration) error {
+// SetOrderResult 写入订单处理结果（键 = msg_id）。
+// 调用时机：MySQL 建单成功之后——result 是「建单成功的盖章回执」，查它不会误报成功。
+func (s *OrderService) SetOrderResult(msgID string, result domain2.OrderResult, expiration time.Duration) error {
 	ctx := context.Background()
-	key := myredis.BuildKey(myredis.KeyOrderResult, orderID, userID)
+	key := myredis.BuildKey(myredis.KeyOrderResult, msgID)
 
-	err := s.client.Set(ctx, key, orderID, expiration).Err()
+	data, err := json.Marshal(result)
+	if err != nil {
+		return &domain2.BusinessError{
+			Code: domain2.ErrCodeCacheSerializeError,
+			Msg:  "序列化订单结果失败: " + err.Error(),
+		}
+	}
+
+	err = s.client.Set(ctx, key, data, expiration).Err()
 	if err != nil {
 		return &domain2.BusinessError{
 			Code: domain2.ErrCodeCacheError,
@@ -27,6 +36,49 @@ func (s *OrderService) OrderResult(orderID, userID int64, expiration time.Durati
 		}
 	}
 	return nil
+}
+
+// GetOrderResult 读取订单处理结果。返回 ok=false 表示键不存在（查无 = processing 态）。
+func (s *OrderService) GetOrderResult(msgID string) (domain2.OrderResult, bool, error) {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyOrderResult, msgID)
+
+	val, err := s.client.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return domain2.OrderResult{}, false, nil
+	}
+	if err != nil {
+		return domain2.OrderResult{}, false, &domain2.BusinessError{
+			Code: domain2.ErrCodeCacheError,
+			Msg:  "获取订单结果失败: " + err.Error(),
+		}
+	}
+
+	var result domain2.OrderResult
+	if err := json.Unmarshal([]byte(val), &result); err != nil {
+		return domain2.OrderResult{}, false, &domain2.BusinessError{
+			Code: domain2.ErrCodeCacheDeserializeError,
+			Msg:  "反序列化订单结果失败: " + err.Error(),
+		}
+	}
+	return result, true, nil
+}
+
+// ClaimDeadProcessed 抢死信处理幂等标记（键 = msg_id）。
+// 标记语义 =「该单库存释放已完成」：返回 true = 我是第一个、可执行精确释放；
+// 返回 false = 释放已完成过，跳过（防 MQ 重投/重复消费 → 重复释放 → 反向超卖）。
+func (s *OrderService) ClaimDeadProcessed(msgID string) (bool, error) {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyDeadProcessed, msgID)
+	return s.client.SetNX(ctx, key, 1, myredis.DefaultSessionTTL).Result()
+}
+
+// ReleaseDeadProcessed 撤销死信处理标记：释放动作失败时调用，
+// 给可能到来的 MQ 重投留补救机会（撤销 = 「还没干完，别拦着重投重试」）。
+func (s *OrderService) ReleaseDeadProcessed(msgID string) error {
+	ctx := context.Background()
+	key := myredis.BuildKey(myredis.KeyDeadProcessed, msgID)
+	return s.client.Del(ctx, key).Err()
 }
 
 // CacheNullProduct 缓存空商品到Redis
@@ -363,4 +415,3 @@ func (s *CartService) RemoveFromCartRedis(userID, productID int64) error {
 
 	return nil
 }
-

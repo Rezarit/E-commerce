@@ -2,10 +2,12 @@ package consumers
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/Rezarit/go-seckill-system/internal/domain"
 	service2 "github.com/Rezarit/go-seckill-system/internal/service"
 	"github.com/Rezarit/go-seckill-system/pkg/logger"
+	"github.com/Rezarit/go-seckill-system/pkg/redis"
 )
 
 // InitDLXConsumer 初始化死信队列消费者
@@ -14,12 +16,10 @@ func InitDLXConsumer() {
 	InitConsumer("order_dlx", handleDLXMessage)
 }
 
-// handleDLXMessage 死信消息处理
-// 刷新式补偿：死信 = 订单没建成 = MySQL 库存正确，逐个商品把 MySQL 库存覆盖回 Redis。
-// 以 MySQL 为权威，天然幂等、不信任消息内容（假消息也只是把 Redis 设为 MySQL 值，不会超卖）。
+// handleDLXMessage 死信消息处理（失败终点收尾三件套：精确补偿库存 + 写 failed 态 + 告警）
+// 死信 = 该单最终没建成 = MySQL 库存没错 = 只需把入口扣掉的 Redis 份额精确还回可卖池。
+// 用精确 AddBackStock（按死信单 items），不用刷新式整 key 覆盖——避免误放在途单份额（笔记 10.9 修订）。
 func handleDLXMessage(body []byte) error {
-	logger.Sugar.Errorf("⚠️⚠️⚠️ [死信队列] 消息重试超限进死信，需要人工介入！消息体: %s", string(body))
-
 	// 解析消息，拿到商品清单（items 里的商品入口已扣过 Redis，需补偿）
 	var msg domain.OrderMessage
 	if err := json.Unmarshal(body, &msg); err != nil {
@@ -27,13 +27,32 @@ func handleDLXMessage(body []byte) error {
 		return nil // 返回 nil → Ack，不再重试（死信是终点）
 	}
 
-	// 刷新式补偿：逐个商品，查 MySQL 库存并覆盖写回 Redis
-	for _, item := range msg.Items {
-		if err := service2.RefreshStockFromDB(item.ProductID); err != nil {
-			// 补偿失败（MySQL/Redis 异常）：打日志，靠 Redis TTL 过期后从 MySQL 重新预热兜底
-			logger.Sugar.Errorf("[死信] 库存补偿失败 | 商品ID: %d | 错误: %v（将靠 TTL 兜底）", item.ProductID, err)
-		}
+	// ① 精确补偿：先抢「库存释放已完成」幂等标记，防 MQ 重投/重复消费导致重复释放（反向超卖）
+	claimed, err := service2.Order.ClaimDeadProcessed(msg.MsgID)
+	if err != nil {
+		logger.Sugar.Errorf("[死信] 抢幂等标记失败 | msg_id: %s | 错误: %v（Ack，靠 TTL/对账兜）", msg.MsgID, err)
+	} else if !claimed {
+		// 已释放过：跳过释放。failed 态仍会走下面②幂等补写（SET 覆盖可重复）
+		logger.Sugar.Infof("[死信] 该单库存已释放过，跳过释放 | msg_id: %s", msg.MsgID)
+	} else if relErr := service2.ReleaseDeadOrderStock(msg.Items); relErr != nil {
+		// 释放没成功：撤销标记，让可能到来的 MQ 重投能再补救（标记 ≠ 抢到，是「干完了」）
+		logger.Sugar.Errorf("[死信] 库存释放失败 | msg_id: %s | 错误: %v（撤销标记，靠重投/TTL 补救）", msg.MsgID, relErr)
+		_ = service2.Order.ReleaseDeadProcessed(msg.MsgID)
 	}
+
+	// ② 写最终失败态到 Redis result，让前端/用户轮询到明确失败。
+	// 写失败也先 Ack，不套娃；极端情况用户看到 processing 直到 TTL 过期，由 MySQL 对账兜底。
+	if err := service2.Order.SetOrderResult(msg.MsgID, domain.OrderResult{
+		Status:    domain.OrderResultFailed,
+		UserID:    msg.UserID,
+		Reason:    "订单处理失败（重试耗尽，已进死信）",
+		CreatedAt: time.Now(),
+	}, redis.DefaultSessionTTL); err != nil {
+		logger.Sugar.Errorf("[死信] 写入失败态失败 | msg_id: %s | 错误: %v", msg.MsgID, err)
+	}
+
+	// ③ 告警留痕，人工介入
+	logger.Sugar.Errorf("⚠️⚠️⚠️ [死信队列] 消息重试超限进死信，需要人工介入！msg_id: %s | 消息体: %s", msg.MsgID, string(body))
 
 	return nil
 }

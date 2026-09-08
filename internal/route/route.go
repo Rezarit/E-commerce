@@ -43,9 +43,10 @@ func InitRoute() *gin.Engine {
 		protectedRouter.DELETE("/cart/remove/:product_id", api2.RemoveCart) //从购物车移除商品
 
 		// 订单相关
-		protectedRouter.POST("/order/create", api2.MakeOrder)             //下单
+		protectedRouter.POST("/order/create", api2.MakeOrder)             //下单（受理，返回 msg_id）
 		protectedRouter.GET("/order/list", api2.GetOrderList)             //获取订单列表
 		protectedRouter.GET("/order/info/:order_id", api2.GetOrderDetail) //获取订单详情
+		protectedRouter.GET("/order/result", api2.QueryOrderResult)       //按 msg_id 查下单处理结果（三态）
 	}
 	return Router
 }

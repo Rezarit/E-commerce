@@ -2,6 +2,7 @@ package consumers
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/Rezarit/go-seckill-system/internal/domain"
 	service2 "github.com/Rezarit/go-seckill-system/internal/service"
@@ -47,14 +48,23 @@ func handleOrderMessage(body []byte) error {
 	}
 	logger.Sugar.Infof("已发送清空购物车消息 | 用户ID: %d", msg.UserID)
 
-	logger.Sugar.Infof("订单创建成功！OrderID: %d。准备清空用户 %d 的购物车...", orderID, msg.UserID)
-
-	// 结果写入 Redis，供前端轮询
-	err = service2.Order.OrderResult(orderID, msg.UserID, redis.DefaultSessionTTL)
-	if err != nil {
-		return err
+	// 建单成功（orderID>0）才写「成交回执」到 Redis result：MySQL 先落库、Redis 后写，
+	// 查 result 不会误报成功。orderID==0 = 幂等命中（订单此前已建过），跳过写，
+	// 避免把已存 result 的 order_id 覆盖成 0。
+	if orderID > 0 {
+		err = service2.Order.SetOrderResult(msg.MsgID, domain.OrderResult{
+			Status:    domain.OrderResultSuccess,
+			OrderID:   orderID,
+			UserID:    msg.UserID,
+			CreatedAt: time.Now(),
+		}, redis.DefaultSessionTTL)
+		if err != nil {
+			// 回执写失败：return err 触发消息重投，幂等命中后重跑会补写（不会重复建单）
+			logger.Sugar.Errorf("写入订单结果失败 | msg_id: %s | 错误: %v", msg.MsgID, err)
+			return err
+		}
 	}
-	logger.Sugar.Infof("准备将订单结果写入 Redis...")
+	logger.Sugar.Infof("订单创建成功！OrderID: %d。结果已写入 Redis result", orderID)
 
 	return nil
 }

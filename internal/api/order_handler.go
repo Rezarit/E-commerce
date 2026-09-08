@@ -26,17 +26,13 @@ func MakeOrder(client *gin.Context) {
 	}
 
 	// 执行下单操作
-	err := service.MakeOrder(userID, req.Address)
+	acc, err := service.MakeOrder(userID, req.Address)
 	if !common2.HandleBusinessError(client, err) {
 		return
 	}
 
-	// 返回成功响应
-	response.Success(client,
-		"下单请求已受理，正在排队处理中，请稍后查询结果",
-		gin.H{
-			"status": "processing",
-		})
+	// 返回受理凭证：msg_id + 冻结的商品清单（前端/压测拿 msg_id 轮询 /order/result）
+	response.Success(client, "下单受理成功，请用 msg_id 查询处理结果", acc)
 }
 
 // GetOrderList 获取订单列表
@@ -95,4 +91,29 @@ func GetOrderDetail(client *gin.Context) {
 			"order":       order,
 			"order_items": orderItems,
 		})
+}
+
+// QueryOrderResult 查询下单处理结果（三态：processing / success / failed）
+// 前端/压测拿下单返回的 msg_id 轮询此接口，直到 success（成交）或 failed（最终失败）
+func QueryOrderResult(client *gin.Context) {
+	userID := ParseUserID(client)
+	if userID == 0 {
+		return
+	}
+
+	msgID := client.Query("msg_id")
+	if msgID == "" {
+		common2.HandleBusinessError(client, &domain.BusinessError{
+			Code: domain.ErrCodeParamInvalid,
+			Msg:  "缺少 msg_id 参数",
+		})
+		return
+	}
+
+	result, err := service.QueryOrderResult(msgID, userID)
+	if !common2.HandleBusinessError(client, err) {
+		return
+	}
+
+	response.Success(client, "查询成功", result)
 }

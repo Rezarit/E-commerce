@@ -17,17 +17,21 @@ import (
 var syncOrderSem = make(chan struct{}, 10)
 
 // MakeOrder 下单
-func MakeOrder(userID int64, address string) error {
+func MakeOrder(userID int64, address string) (*domain2.OrderAcceptance, error) {
 	logger.Sugar.Infof("[Service] 开始下单 | 用户ID：%d", userID)
 
 	items, err := GetCartItems(userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = CheckCart(items)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	// 先生成受理单号（MsgID）再扣库存：号先造，扣成功才随消息生效（对齐主流「号随扣减事件走」）。
+	// 扣库存失败早返回时该号作废即可；正常/降级路径共用同一 msgID，保证幂等一致。
+	msgID := uuid.New().String()
 
 	// 入口拦截：在 API 层用 Redis Lua 扣库存，库存不足当场返回，不进 MQ
 	// （秒杀核心：让 Redis 挡掉大部分请求，避免 100 个请求全进 MQ 才扣减）
@@ -39,7 +43,7 @@ func MakeOrder(userID int64, address string) error {
 				_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
 			}
 			logger.Sugar.Errorf("[Service] 扣减库存失败 | 商品ID：%d | 错误：%v", item.ProductID, err)
-			return &domain2.BusinessError{
+			return nil, &domain2.BusinessError{
 				Code: domain2.ErrCodeParamInvalid,
 				Msg:  "商品库存不足",
 			}
@@ -47,14 +51,19 @@ func MakeOrder(userID int64, address string) error {
 		deducted = append(deducted, domain2.OrderItemMsg{ProductID: item.ProductID, Quantity: item.Quantity})
 	}
 
-	// 生成唯一 MsgID（正常路径和降级路径共用，保证幂等一致）
-	msgID := uuid.New().String()
+	// 构造受理凭证（冻结的商品清单 + 受理单号），回给前端/压测拿 msg_id 去轮询结果。
+	// 注意：这里不带金额——算金额要查 MySQL，会污染「受理只走 Redis+MQ」的压测主战场；
+	// 权威金额以订单落库后的 order.total 为准，由 /order/result 的 success 态带回。
+	acc := &domain2.OrderAcceptance{MsgID: msgID, Items: make([]domain2.OrderItemSnapshot, 0, len(deducted))}
+	for _, d := range deducted {
+		acc.Items = append(acc.Items, domain2.OrderItemSnapshot{ProductID: d.ProductID, Quantity: d.Quantity})
+	}
 
 	// 发 MQ（带上已扣减的商品清单，消费者据此建订单，不再读购物车）
 	err = createOrder(msgID, userID, address, deducted)
 	if err == nil {
 		logger.Sugar.Infof("[Service] 下单成功 | 用户ID：%d", userID)
-		return nil
+		return acc, nil
 	}
 
 	// ===== MQ 不可用，降级为同步下单 =====
@@ -70,7 +79,7 @@ func MakeOrder(userID int64, address string) error {
 		for _, d := range deducted {
 			_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
 		}
-		return &domain2.BusinessError{
+		return nil, &domain2.BusinessError{
 			Code: domain2.ErrCodeSystemError,
 			Msg:  "系统繁忙，请稍后再试",
 		}
@@ -84,11 +93,11 @@ func MakeOrder(userID int64, address string) error {
 			_ = stockDeductService.AddBackStock(d.ProductID, d.Quantity)
 		}
 		logger.Sugar.Errorf("[Service] 降级同步下单失败 | 用户ID：%d | 错误：%v", userID, syncErr)
-		return syncErr
+		return nil, syncErr
 	}
 
 	logger.Sugar.Infof("[Service] 降级同步下单成功 | 用户ID：%d", userID)
-	return nil
+	return acc, nil
 }
 
 // GetCartItems 获取用户购物车商品（Redis 优先，未命中读 MySQL 兜底）
@@ -158,12 +167,13 @@ func ExecuteOrderCreation(msgID string, userID int64, address string, items []do
 		}
 	}()
 
-	// 创建订单
+	// 创建订单（显式落 created = 成交终态；不用 DB 默认 pending，那个词暗示「还有待支付一步」，本系统没有）
 	order := domain2.Order{
 		MsgID:   msgID,
 		UserID:  userID,
 		Address: address,
 		Total:   calculateTotalAmount(items),
+		Status:  domain2.OrderStatusCreated,
 	}
 
 	if err := dao2.CreateOrder(tx, &order); err != nil {
@@ -367,4 +377,39 @@ func getOrderItemsByOrderID(orderID int64) ([]domain2.OrderItem, error) {
 		}
 	}
 	return orderItems, nil
+}
+
+// QueryOrderResult 按 msg_id 查询下单处理结果。
+// 返回三态之一：查无键 = processing（消息还在队列/未建单）；success / failed 为终态。
+// 归属校验：防止他人拿 msg_id 窥探订单结果（查无态无法校验归属，但 uuid 难猜 + 需登录）。
+func QueryOrderResult(msgID string, userID int64) (*domain2.OrderResult, error) {
+	result, ok, err := Order.GetOrderResult(msgID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		// 键不存在：还没被消费者处理到 → 处理中
+		return &domain2.OrderResult{Status: domain2.OrderResultProcessing, UserID: userID}, nil
+	}
+	if result.UserID != userID {
+		return nil, &domain2.BusinessError{
+			Code: domain2.ErrCodePermissionDenied,
+			Msg:  "无权查看该订单处理结果",
+		}
+	}
+	return &result, nil
+}
+
+// ReleaseDeadOrderStock 死信订单的库存释放：按死信单自己的冻结清单精确加回 Redis。
+// 只释放「这一单」入口扣过的份额，不做整 key 刷新 MySQL 现值——刷新式会把仍在途订单
+// 已预扣的份额误放回 Redis → 入口超发受理（见核心概念笔记 10.9 修订）。
+// 死信 = 订单最终没建成 = 该单不该成交，份额归还可卖池。失败靠 Redis TTL 兜底。
+func ReleaseDeadOrderStock(items []domain2.OrderItemMsg) error {
+	for _, it := range items {
+		if err := stockDeductService.AddBackStock(it.ProductID, it.Quantity); err != nil {
+			logger.Sugar.Errorf("[Service] 死信库存释放失败 | 商品ID: %d | 数量: %d | 错误: %v", it.ProductID, it.Quantity, err)
+			return err
+		}
+	}
+	return nil
 }
